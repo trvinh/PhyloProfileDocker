@@ -33,6 +33,7 @@ RUN R -e "BiocManager::install(version = 'devel', ask = FALSE)"
 # Copy configuration files into the Docker image
 COPY shiny-server.conf  /etc/shiny-server/shiny-server.conf
 COPY /app /srv/shiny-server/
+RUN chmod 777 /srv/shiny-server/data/*.txt
 
 # Make the ShinyApp available at port 80
 EXPOSE 80
