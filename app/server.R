@@ -11,7 +11,6 @@ options(
 #' MAIN SERVER =================================================================
 shinyServer(function(input, output, session) {
     # Automatically stop a Shiny app when closing the browser tab
-    # session$onSessionEnded(stopApp)
     session$allowReconnect(TRUE)
 
     # =========================== INITIAL CHECKING  ============================
@@ -305,27 +304,6 @@ shinyServer(function(input, output, session) {
                 width = "100%",
                 placeholder = "Name of second variable"
             )
-        }
-    })
-
-    # * render 2. variable relationship according to demo data -----------------
-    output$var2Relation.ui <- renderUI({
-        if (input$demoData == "ampk-tor") {
-            selectInput(
-                "var2Relation", label = h5("Relationship:"),
-                choices = list(
-                    "Prot-Prot" = "protein", "Prot-Spec" = "species"
-                ),
-                selected = "protein",
-                width = 130
-            )
-        } else {
-            selectInput("var2Relation", label = h5("Relationship:"),
-                        choices = list(
-                            "Prot-Prot" = "protein", "Prot-Spec" = "species"
-                        ),
-                        selected = "species",
-                        width = 130)
         }
     })
 
@@ -1288,8 +1266,8 @@ shinyServer(function(input, output, session) {
                 longDataframe <- as.data.frame(unclass(longDataframe))
             } else longDataframe <- createLongMatrix(filein$datapath)
         }
-        
-        # convert geneID, ncbiID and orthoID into factor and 
+
+        # convert geneID, ncbiID and orthoID into factor and
         # var1, var2 into numeric
         for (i in seq_len(3)) {
             longDataframe[, i] <- as.factor(longDataframe[, i])
@@ -1301,7 +1279,7 @@ shinyServer(function(input, output, session) {
                 )
             }
         }
-        
+
         # remove duplicated lines
         longDataframe <- longDataframe[!duplicated(longDataframe),]
         return(longDataframe)
@@ -1326,7 +1304,7 @@ shinyServer(function(input, output, session) {
                 } else {
                     domainDf <- myData[["EH2546"]]
                 }
-                
+
                 domainDf$seedID <- as.character(domainDf$seedID)
                 domainDf$orthoID <- as.character(domainDf$orthoID)
                 domainDf$seedID <- gsub("\\|",":",domainDf$seedID)
@@ -1448,7 +1426,7 @@ shinyServer(function(input, output, session) {
     # * max/min/mean/median VAR1 (3) and VAR2 (4)
     getDataFiltered <- reactive({
         req(preData())
-
+        req(sortedtaxaList())
         fullMdData <- parseInfoProfile(
             inputDf = preData(),
             sortedInputTaxa = sortedtaxaList(),
@@ -1518,14 +1496,14 @@ shinyServer(function(input, output, session) {
 
         # create data for heatmap plotting
         dataHeat <- filterProfileData(
-            superTaxonDf = dataSupertaxa(),
+            DF = dataSupertaxa(),
             refTaxon = inSelect,
             percentCutoff,
             coorthologCutoffMax,
             var1Cutoff,
             var2Cutoff,
-            var1Relation = input$var1Relation,
-            var2Relation = input$var2Relation,
+            input$var1Relation,
+            input$var2Relation,
             groupByCat = input$colorByGroup,
             catDt = inputCatDt
         )
@@ -1932,12 +1910,11 @@ shinyServer(function(input, output, session) {
 
         req(info)
         ### get info for present taxa in selected supertaxon (1)
-        plotTaxon <- info[3]
-        plotGeneID <- info[1]
         fullDf <- getDataFiltered()
+        plotTaxon <- unique(fullDf$supertaxon[grep(info[3], fullDf$supertaxon)])
+        plotGeneID <- info[1]
         selDf <- fullDf[fullDf$geneID == plotGeneID
                         & fullDf$supertaxon == plotTaxon, ]
-
         ### get all taxa of this supertaxon (2)
         allTaxaDf <- sortedtaxaList()
         allTaxaDf <- allTaxaDf[allTaxaDf$supertaxon == plotTaxon,

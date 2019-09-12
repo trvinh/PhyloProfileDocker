@@ -30,11 +30,11 @@ createArchitecturePlot <- function(
     labelArchiSize, titleArchiSize, archiHeight, archiWidth
 ){
     output$archiPlot <- renderPlot({
-        if (is.null(nrow(domainInfo()))) return()
+        if (is.null(nrow(domainInfo()))) stop("Domain info is NULL!")
         g <- createArchiPlot(
             pointInfo(), domainInfo(), labelArchiSize(), titleArchiSize()
         )
-        if (any(g == "ERR-0")) {
+        if (any(g == "No domain info available!")) {
             msgPlot()
         } else {
             grid.draw(g)
@@ -83,7 +83,7 @@ createArchitecturePlot <- function(
     )
 
     output$selectedDomain <- renderText({
-        if (is.null(input$archiClick$y)) return()
+        if (is.null(input$archiClick$y)) return("No domain selected!")
         convertY(unit(input$archiClick$y, "npc"), "native")
     })
 }

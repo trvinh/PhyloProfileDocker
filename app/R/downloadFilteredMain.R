@@ -106,7 +106,7 @@ downloadFilteredMain <- function(
 
     # filtered data for downloading (Main Profile ) ----------------------------
     downloadData <- reactive({
-        if (is.null(data())) return()
+        if (is.null(data())) stop("Data for downloading is NULL!")
         ### filtered data
         dataOut <- data()
 
@@ -237,7 +237,7 @@ downloadFilteredMain <- function(
     )
 
     # render download data table -----------------------------------------------
-    output$filteredMainData <- renderDataTable(rownames = FALSE, {
+    output$filteredMainData <- renderDataTable({
         data <- downloadData()
         data
     })
