@@ -1,6 +1,8 @@
-FROM rocker/r-ver:3.6.0
+FROM bioconductor/bioconductor_full:devel
 
 MAINTAINER Vinh Tran
+
+ENV DEBIAN_FRONTEND noninteractive
 
 # Install Ubuntu packages
 RUN apt-get update && apt-get install -y \
@@ -25,10 +27,9 @@ RUN wget --no-verbose https://s3.amazonaws.com/rstudio-shiny-server-os-build/ubu
     rm -f version.txt ss-latest.deb
 
 # Install PhyloProfile package
-RUN R -e "install.packages('remotes')"
-RUN installGithub.r "BIONF/PhyloProfile"
-RUN installGithub.r "BIONF/PhyloProfileData"
-RUN R -e "BiocManager::install(version = 'devel', ask = FALSE)"
+RUN install2.r --error BiocManager \
+&& Rscript -e 'requireNamespace("BiocManager"); BiocManager::install(c("PhyloProfile", "PhyloProfileData"));' \
+&& rm -rf /tmp/downloaded_packages/ /tmp/*.rds
 
 # Copy configuration files into the Docker image
 COPY shiny-server.conf  /etc/shiny-server/shiny-server.conf
