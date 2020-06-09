@@ -127,7 +127,7 @@ shinyUI(
 
         # MAIN NARVARPAGE TABS -------------------------------------------------
         navbarPage(
-            em(strong("PhyloProfile v1.0.0")),
+            em(strong("PhyloProfile v1.2.5")),
             id = "tabs",
             collapsible = TRUE,
             inverse = TRUE,
@@ -280,6 +280,7 @@ shinyUI(
                 # * 2nd column -------------------------------------------------
                 column(
                     3,
+                    bsAlert("fileExistMsgUI"),
                     bsAlert("inputMsgUI"),
 
                     # ** List of new taxa --------------------------------------
@@ -288,7 +289,7 @@ shinyUI(
                         output.unkTaxaStatus == 'ncbi' ||
                         output.unkTaxaStatus == 'invalid'",
                         strong(h4("New taxa were found:")),
-                        dataTableOutput("unkTaxaFull"),
+                        DT::dataTableOutput("unkTaxaFull"),
                         br(),
                         downloadButton("unkTaxa.download", "Download ID list")
                     ),
@@ -377,7 +378,7 @@ shinyUI(
                                 <span style=\"color: #ff0000;\">invalid IDs
                                 </span> (either in newTaxa.txt or in the main
                                 profile input or both). IDs of non-NCBI taxa
-                                have to be greater than 2268208.</em></p>
+                                have to be greater than 999999005.</em></p>
                                 <p><em>Please replace those IDs before
                                 continuing!</em></p>"
                             )
@@ -452,21 +453,11 @@ shinyUI(
                         br(),
 
                         strong(h5("Select taxonomy rank:")),
-                        shinycssloaders::withSpinner(
-                            uiOutput("rankSelect"),
-                            proxy.height = "50px",
-                            type = 7,
-                            size = 0.5
-                        ),
+                        uiOutput("rankSelect"),
                         br(),
 
                         strong(h5("Choose (super)taxon of interest:")),
-                        shinycssloaders::withSpinner(
-                            uiOutput("select"),
-                            proxy.height = "50px",
-                            type = 7,
-                            size = 0.5
-                        ),
+                        uiOutput("select"),
                         br(),
 
                         bsButton(
@@ -968,6 +959,21 @@ shinyUI(
                         )
                     ),
                     groupComparisonUI("groupComparison")
+                ),
+                
+                # * Update NCBI taxonomy database ------------------------------
+                tabPanel(
+                    "Update NCBI taxonomy database",
+                    h4(strong("Update NCBI taxonomy")),
+                    bsAlert("descUpdateNCBITaxUI"),
+                    bsButton(
+                        "doUpdateNcbi",
+                        "Do update",
+                        style = "warning",
+                        icon("wrench")
+                    ),
+                    hr(),
+                    verbatimTextOutput("updateNCBITaxStatus")
                 )
             ),
 
@@ -1039,9 +1045,9 @@ shinyUI(
             ),
             textInput(
                 "newID",
-                "ID (must be a number and greater than 2268208,
-                e.g. 9000001)",
-                9000001,
+                "ID (must be a number and greater than 999999005,
+                e.g. 999999901)",
+                999999901,
                 width = 500
             ),
             textInput(
@@ -1622,7 +1628,7 @@ shinyUI(
             conditionalPanel(
                 condition = "output.checkTaxonGroupGC == false",
                 h5(strong("Invalid taxa were found:")),
-                dataTableOutput("invalidTaxonGroupGC")
+                DT::dataTableOutput("invalidTaxonGroupGC")
             )
         ),
 
