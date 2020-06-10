@@ -1,4 +1,4 @@
-FROM bioconductor/bioconductor_full:devel
+FROM bioconductor/bioconductor_docker:devel
 
 MAINTAINER Vinh Tran
 
@@ -27,9 +27,7 @@ RUN wget --no-verbose https://s3.amazonaws.com/rstudio-shiny-server-os-build/ubu
     rm -f version.txt ss-latest.deb
 
 # Install PhyloProfile package
-RUN install2.r --error BiocManager \
-&& Rscript -e 'requireNamespace("BiocManager"); BiocManager::install(c("PhyloProfile", "ExperimentHub", "PhyloProfileData"));' \
-&& rm -rf /tmp/downloaded_packages/ /tmp/*.rds
+RUN R -e 'BiocManager::install(c("ExperimentHub", "PhyloProfile", "PhyloProfileData"))'
 
 # Copy configuration files into the Docker image
 COPY shiny-server.conf  /etc/shiny-server/shiny-server.conf
