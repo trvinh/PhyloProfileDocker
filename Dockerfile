@@ -28,7 +28,7 @@ RUN wget --no-verbose https://s3.amazonaws.com/rstudio-shiny-server-os-build/ubu
 
 # Install PhyloProfile package
 RUN install2.r --error BiocManager \
-&& Rscript -e 'requireNamespace("BiocManager"); BiocManager::install(c("PhyloProfile", "PhyloProfileData"));' \
+&& Rscript -e 'requireNamespace("BiocManager"); BiocManager::install(c("PhyloProfile", "ExperimentHub", "PhyloProfileData"));' \
 && rm -rf /tmp/downloaded_packages/ /tmp/*.rds
 
 # Copy configuration files into the Docker image
