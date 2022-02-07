@@ -37,10 +37,16 @@ shinyUI(
                     column(
                         1,
                         createPlotSize("width", "Width (px)", 600),
-                        actionButton("mainPlotConfig", "Appearance")
+                        checkboxInput(
+                            "autoSizing",
+                            strong(em("Auto sizing")),
+                            value = TRUE,
+                            width = NULL
+                        )
                     ),
                     column(
-                        1, createPlotSize("height", "Height (px)", 600)
+                        1, createPlotSize("height", "Height (px)", 600),
+                        actionButton("mainPlotConfig", "Appearance")
                     ),
                     column(
                         2, uiOutput("var1Cutoff.ui")
@@ -90,17 +96,23 @@ shinyUI(
                         checkboxInput(
                             "autoUpdateSelected",
                             strong(em("Auto update plot")),
-                            value = FALSE,
+                            value = TRUE,
                             width = NULL
                         )
                     ),
                     column(
                         1,
                         createPlotSize("selectedWidth", "Width (px)", 600),
-                        actionButton("selectedPlotConfig", "Appearance")
+                        checkboxInput(
+                            "selectedAutoSizing",
+                            strong(em("Auto sizing")),
+                            value = TRUE,
+                            width = NULL
+                        )
                     ),
                     column(
-                        1, createPlotSize("selectedHeight", "Height (px)", 600)
+                        1, createPlotSize("selectedHeight", "Height (px)", 600),
+                        actionButton("selectedPlotConfig", "Appearance")
                     ),
                     column(
                         2, uiOutput("var1Filter.ui")
@@ -127,7 +139,7 @@ shinyUI(
 
         # MAIN NARVARPAGE TABS -------------------------------------------------
         navbarPage(
-            em(strong("PhyloProfile v1.2.5")),
+            em(strong("PhyloProfile v1.8.5")),
             id = "tabs",
             collapsible = TRUE,
             inverse = TRUE,
@@ -270,11 +282,7 @@ shinyUI(
                     uiOutput("domainInputFile.ui"),
 
                     hr(),
-                    em(a(
-                        "Click here to download demo files",
-                        href = "https://github.com/BIONF/phyloprofile-data",
-                        target = "_blank"
-                    ))
+                    uiOutput("downloadDemo.ui")
                 ),
 
                 # * 2nd column -------------------------------------------------
@@ -338,7 +346,7 @@ shinyUI(
                         conditionalPanel(
                             condition = "input.orderTaxa
                                         == 'by user defined tree'",
-                            fileInput("inputTree", "")
+                            uiOutput("inputTree.ui")
                         ),
 
                         uiOutput("checkNewick.ui"),
@@ -501,7 +509,7 @@ shinyUI(
                                 "...to:",
                                 min = 1,
                                 max = 1600,
-                                value = 30,
+                                value = 1000,
                                 width = 100
                             ),
                             style = "padding:0px;"
@@ -614,7 +622,7 @@ shinyUI(
 
                         h5(""),
                         conditionalPanel(
-                            condition = "input.autoUpdate == false",
+                            condition = "input.autoUpdateSelected == false",
                             bsButton(
                                 "plotCustom",
                                 "Update plot",
@@ -961,27 +969,147 @@ shinyUI(
                     groupComparisonUI("groupComparison")
                 ),
                 
-                # * Update NCBI taxonomy database ------------------------------
+                # * NCBI taxonomy data -----------------------------------------
                 tabPanel(
-                    "Update NCBI taxonomy database",
-                    h4(strong("Update NCBI taxonomy")),
-                    bsAlert("descUpdateNCBITaxUI"),
-                    bsButton(
-                        "doUpdateNcbi",
-                        "Do update",
-                        style = "warning",
-                        icon("wrench")
+                    "NCBI taxonomy data",
+                    bsAlert("descNcbiTaxDbUI"),
+                    column(
+                        3,
+                        radioButtons(
+                            inputId = "taxDB",
+                            label = "Choose a task:",
+                            choices = list(
+                                "Update NCBI taxonomy DB" = "update",
+                                "Reset NCBI taxonomy DB" = "reset",
+                                "Export taxonomy DB files" = "export",
+                                "Import taxonomy DB files" = "import"
+                            )
+                        )
                     ),
-                    hr(),
-                    verbatimTextOutput("updateNCBITaxStatus")
+                    column(
+                        9,
+                        conditionalPanel(
+                            condition = "input.taxDB=='update'",
+                            h4(strong("Update NCBI taxonomy")),
+                            bsButton(
+                                "doUpdateNcbi",
+                                "Do update",
+                                style = "warning",
+                                icon("wrench")
+                            ),
+                            hr(),
+                            verbatimTextOutput("updateNCBITaxStatus")
+                        ),
+                        conditionalPanel(
+                            condition = "input.taxDB=='reset'",
+                            h4(strong("Reset taxonomy data")),
+                            bsButton(
+                                "doResetTax",
+                                "Do reset",
+                                style = "warning",
+                                icon("wrench")
+                            ),
+                            hr(),
+                            verbatimTextOutput("resetTaxonomyDataStatus")
+                        ),
+                        conditionalPanel(
+                            condition =
+                                "input.taxDB=='export'",
+                            h4(strong("Export current taxonomy files")),
+                            shinyDirButton(
+                                "taxDirOut", 
+                                "Select output directory" ,
+                                title = paste(
+                                    "Please select output directory"
+                                ),
+                                buttonType = "default", class = NULL
+                            ),
+                            br(),
+                            uiOutput("taxDirOut.ui"),
+                            br(),
+                            bsButton(
+                                "doExportTax",
+                                "Do export",
+                                style = "warning",
+                                icon("file-export")
+                            ),
+                            hr(),
+                            verbatimTextOutput("exportTaxonomyDataStatus")
+                        ),
+                        conditionalPanel(
+                            condition =
+                                "input.taxDB=='import'",
+                            h4(strong("Import your own taxonomy files")),
+                            shinyDirButton(
+                                "taxDir", 
+                                "Select input directory" ,
+                                title = paste(
+                                    "Please select directory that contains 
+                                    the taxonomy files"
+                                ),
+                                buttonType = "default", class = NULL
+                            ),
+                            br(),
+                            uiOutput("taxDir.ui"),
+                            br(),
+                            bsButton(
+                                "doImportTax",
+                                "Do import",
+                                style = "warning",
+                                icon("file-import")
+                            ),
+                            hr(),
+                            verbatimTextOutput("importTaxonomyDataStatus")
+                        )
+                    )
                 )
             ),
 
             # DATA DOWNLOAD TAB ================================================
             navbarMenu(
-                "Download filtered data",
+                "Export data",
+                # * Export data ------------------------------------------------
                 downloadFilteredMainUI("filteredMainDownload"),
-                downloadFilteredCustomizedUI("filteredCustomizedDownload")
+                downloadFilteredCustomizedUI("filteredCustomizedDownload"),
+                
+                # * Export plot settings ---------------------------------------
+                tabPanel(
+                    "Export plot settings",
+                    h4(strong("Export plot settings")),
+                    bsAlert("descExportSettingUI"),
+                    radioButtons(
+                        inputId = "exportSetting",
+                        label = "as:",
+                        choices = list(
+                            "a list" = "list",
+                            "an Rscript" = "rscript"
+                        )
+                    ),
+                    hr(),
+                    strong("Output dir:"),
+                    br(), br(),
+                    shinyDirButton(
+                        "settingDir", 
+                        "Select output directory" ,
+                        title = paste(
+                            "Please select output directory"
+                        ),
+                        buttonType = "default", class = NULL
+                    ),
+                    br(), br(),
+                    strong("File name:"),
+                    uiOutput("settingFile.ui"),
+                    uiOutput("settingDir.ui"),
+                    br(),
+                    bsButton(
+                        "doExportSetting",
+                        "Do export",
+                        style = "warning",
+                        icon("file-export")
+                    ),
+                    hr(),
+                    verbatimTextOutput("exportSettingStatus")
+                )
             ),
 
             # HELP TAB =========================================================
@@ -1121,6 +1249,12 @@ shinyUI(
                         strong("Hide taxa that have no ortholog (NAs)",
                                style = "color:red"),
                         value = FALSE
+                    ),
+                    checkboxInput(
+                        "detailedFilter",
+                        strong("Apply filters",
+                               style = "color:red"),
+                        value = FALSE
                     )
                 )
             ),
@@ -1132,7 +1266,10 @@ shinyUI(
             uiOutput("checkDomainFiles"),
             br(),
             h4("Sequence:"),
-            verbatimTextOutput("fasta")
+            verbatimTextOutput("fasta"),
+            br(),
+            h4("Links:"),
+            uiOutput("dbLink")
         ),
 
         # * popup for plotting domain architecture plot ------------------------
@@ -1150,11 +1287,11 @@ shinyUI(
                 ),
                 column(
                     2,
-                    createTextSize("titleArchiSize", "Title size(px)", 11, 150)
+                    createTextSize("titleArchiSize", "Title size(px)", 14, 150)
                 ),
                 column(
                     2,
-                    createTextSize("labelArchiSize", "SeqID size(px)", 11, 150)
+                    createTextSize("labelArchiSize","Domain ID size(px)",12,150)
                 )
             ),
             uiOutput("test.ui"),
@@ -1170,12 +1307,25 @@ shinyUI(
             colourpicker::colourInput(
                 "lowColorVar1",
                 "Low variable 1 (dot)",
-                value = "darkorange"
+                value = "#FF8C00"
+            ),            
+            colourpicker::colourInput(
+                "midColorVar1",
+                "Mid variable 1 (dot)",
+                value = "#40ABCF"
             ),
             colourpicker::colourInput(
                 "highColorVar1",
                 "High variable 1 (dot)",
-                value = "steelblue"
+                value = "#164294"
+            ),
+            numericInput(
+                "midVar1",
+                "Mitpoint varriable 1",
+                min = 0,
+                max = 1,
+                step = 0.01,
+                value = 0.5
             ),
             actionButton(
                 "defaultColorVar1",
@@ -1186,12 +1336,25 @@ shinyUI(
             colourpicker::colourInput(
                 "lowColorVar2",
                 "Low variable 2 (background)",
-                value = "grey95"
+                value = "#CC8D8D"
+            ),
+            colourpicker::colourInput(
+                "midColorVar2",
+                "Mid variable 2 (background)",
+                value = "#FFFFFF"
             ),
             colourpicker::colourInput(
                 "highColorVar2",
                 "High variable 2 (background)",
-                value = "khaki"
+                value = "#616587"
+            ),
+            numericInput(
+                "midVar2",
+                "Mitpoint varriable 2",
+                min = 0,
+                max = 1,
+                step = 0.01,
+                value = 1
             ),
             actionButton(
                 "defaultColorVar2",
@@ -1273,10 +1436,10 @@ shinyUI(
             "mainPlotConfig",
             size = "small",
             column(
-                6, createTextSize("xSize", "X-axis label size (px)", 8, 100)
+                6, createTextSize("xSize", "X-axis label size (px)", 14, 100)
             ),
             column(
-                6, createTextSize("ySize", "Y-axis label size (px)", 8, 100)
+                6, createTextSize("ySize", "Y-axis label size (px)", 14, 100)
             ),
             column(
                 6,
@@ -1340,11 +1503,11 @@ shinyUI(
             size = "small",
             column(
                 6,
-                createTextSize("xSizeSelect", "X-axis label size (px)", 8, 100)
+                createTextSize("xSizeSelect", "X-axis label size (px)", 14, 100)
             ),
             column(
                 6,
-                createTextSize("ySizeSelect", "Y-axis label size (px)", 8, 100)
+                createTextSize("ySizeSelect", "Y-axis label size (px)", 14, 100)
             ),
 
             column(

@@ -8,17 +8,24 @@ source("R/functions.R")
 packages <- c(
     "ape", "bioDist", "Biostrings", "colourpicker", "data.table", "energy",
     "GenomeInfoDbData", "ggplot2", "GO.db", "grid", "gridExtra", "RColorBrewer",
-    "shiny", "shinyBS", "shinyjs", "OmaDB", "zoo"
+    "shiny", "shinyBS", "shinyFiles", "shinyjs", "OmaDB", "zoo"
 )
 
 # Load packages
 lapply(packages, library, character.only = TRUE)
 
 # Install ExperimentHub to load demo data sets
-if (!requireNamespace("ExperimentHub"))
-    BiocManager::install("ExperimentHub")
-if (packageVersion("ExperimentHub") < "1.11.1")
-    BiocManager::install(pkgs = "ExperimentHub", version = "devel")
-library(ExperimentHub)
-eh = ExperimentHub()
-myData <- query(eh, "PhyloProfileData")
+if (hasInternet() == TRUE) {
+    if (!requireNamespace("ExperimentHub"))
+        BiocManager::install("ExperimentHub")
+    if (packageVersion("ExperimentHub") < "1.11.1")
+        BiocManager::install(pkgs = "ExperimentHub", version = "devel")
+    library(ExperimentHub)
+    eh = ExperimentHub(localHub = TRUE)
+    if ("EH2549" %in% eh$ah_id) {
+        myData <- query(eh, "PhyloProfileData")
+    } else {
+        eh = ExperimentHub()
+        myData <- query(eh, "PhyloProfileData")
+    }
+}

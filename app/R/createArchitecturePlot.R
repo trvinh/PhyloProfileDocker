@@ -20,7 +20,21 @@ createArchitecturePlotUI <- function(id) {
             tags$style(HTML(
                 ".butDL{background-color:#476ba3;} .butDL{color: white;}"))
         ),
-        textOutput(ns("selectedDomain"))
+        br(),
+        br(),
+        h4(strong("LINKS TO ONLINE DATABASE")),
+        textOutput(ns("selectedDomain")),
+        tableOutput(ns("domainTable")),
+        HTML(
+            paste0(
+                "<p><em><strong>Disclaimer:</strong> ",
+                "External links are automatically generated and may point to ",
+                "a wrong target (see <a ",
+                "href=\"https://github.com/BIONF/PhyloProfile/wiki/FAQ",
+                "#wrong-info-from-public-databases\" ",
+                "target=\"_blank\">FAQ</a>)</em></p>"
+            )
+        )
     )
 }
 
@@ -82,16 +96,23 @@ createArchitecturePlot <- function(
         }
     )
 
-    output$selectedDomain <- renderText({
-        if (is.null(input$archiClick$y)) return("No domain selected!")
-        convertY(unit(input$archiClick$y, "npc"), "native")
-    })
+    # output$selectedDomain <- renderText({
+    #     if (is.null(input$archiClick$y)) return("No domain selected!")
+    #     y <- input$archiClick$y
+    #     # paste(y, round(y), convertY(unit(y, "npc"), "px"))
+    #     
+    # })
+    
+    output$domainTable <- renderTable({
+        if (is.null(nrow(domainInfo()))) return("No domain info available!")
+        features <- getDomainLink(pointInfo(), domainInfo())
+        features
+    }, sanitize.text.function = function(x) x)
 }
 
 #' plot error message
 #' @return error message in a ggplot object
 #' @author Vinh Tran {tran@bio.uni-frankfurt.de}
-
 msgPlot <- function() {
     msg <- paste(
         "No information about domain architecture!",
@@ -115,4 +136,78 @@ msgPlot <- function() {
               plot.background = element_blank()) +
         ylim(0,1)
     return(g)
+}
+
+
+#' get pfam and smart domain links
+#' @return dataframe with domain IDs and their database links
+#' @author Vinh Tran {tran@bio.uni-frankfurt.de}
+getDomainLink <- function(info, domainDf) {
+    group <- as.character(info[1])
+    ortho <- as.character(info[2])
+    # get sub dataframe based on selected groupID and orthoID
+    group <- gsub("\\|", ":", group)
+    ortho <- gsub("\\|", ":", ortho)
+    grepID <- paste(group, "#", ortho, sep = "")
+    subdomainDf <- domainDf[grep(grepID, domainDf$seedID), ]
+    subdomainDf$feature <- as.character(subdomainDf$feature)
+    orthoID <- NULL
+    feature <- NULL
+    if (nrow(subdomainDf) < 1) return(paste0("No domain info available!"))
+    else {
+        # ortho & seed domains df
+        orthoDf <- subdomainDf[subdomainDf$orthoID == ortho,]
+        seedDf <- subdomainDf[subdomainDf$orthoID != ortho,]
+        feature <- c(
+            levels(as.factor(orthoDf$feature)), 
+            levels(as.factor(seedDf$feature))
+        )
+    }
+    # get URLs
+    featurePfam <- unique(feature[grep("pfam", feature)])
+    pfamDf <- data.frame(ID = character(), PFAM = character())
+    if (length(featurePfam) > 0)
+        pfamDf <- createLinkTable(featurePfam, "pfam")
+    
+    featureSmart <- unique(feature[grep("smart", feature)])
+    smartDf <- data.frame(ID = character(), SMART = character())
+    if (length(featureSmart) > 0)
+        smartDf <- createLinkTable(featureSmart, "smart")
+    
+    featDf <- merge(pfamDf, smartDf, by = "ID", all = TRUE)
+    colnames(featDf) <- c("ID", "PFAM", "SMART")
+    return(featDf)
+}
+
+#' plot error message
+#' @return error message in a ggplot object
+#' @author Vinh Tran {tran@bio.uni-frankfurt.de}
+createLinkTable <- function(featureList, featureType) {
+    feature <- sub("_","@", featureList)
+    featDf <- NULL
+    if (length(feature) > 0) {
+        tmpDf <- data.frame(
+            do.call(
+                'cbind', 
+                data.table::tstrsplit(as.character(feature), '@', fixed = TRUE)
+            )
+        )
+        featDf <- data.frame("ID" = levels(as.factor(tmpDf$X2)))
+        if (featureType == "pfam") {
+            # featDf$type <- "PFAM"
+            featDf$link <- paste0(
+                "<a href='https://pfam.xfam.org/family/", featDf$ID, 
+                "' target='_blank'>", featDf$ID, "</a>"
+            )
+        } else {
+            # featDf$type <- "SMART"
+            featDf$link <- paste0(
+                "<a href='http://smart.embl-heidelberg.de/smart/", 
+                "do_annotation.pl?BLAST=DUMMY&DOMAIN=", 
+                featDf$ID, "' target='_blank'>",
+                featDf$ID, "</a>"
+            )
+        }
+    }
+    return(featDf)
 }
