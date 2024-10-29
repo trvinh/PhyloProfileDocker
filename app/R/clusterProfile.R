@@ -82,7 +82,7 @@ clusterProfile <- function(input, output, session,
     # Brushed cluster table ====================================================
     #' render brushedCluster.table based on clicked point on dendrogram plot
     brushedClusterGene <- reactive({
-		clusteredTree <- as.phylo(clusterData())
+		clusteredTree <- ape::as.phylo(clusterData())
 		labels <- rev(sortTaxaFromTree(clusteredTree))
 
         # get list of selected gene(s)

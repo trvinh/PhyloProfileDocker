@@ -32,11 +32,11 @@ plotGeneAgeUI <- function(id) {
 }
 
 plotGeneAge <- function(input, output, session,
-                        data, geneAgeWidth, geneAgeHeight, geneAgeText) {
+                        data, geneAgeWidth, geneAgeHeight, geneAgeText, font) {
     # render gene age plot -----------------------------------------------------
     output$geneAgePlot <- renderPlot({
         if (is.null(data())) stop("No input data available!")
-        createGeneAgePlot(geneAgePlotDf(data()), geneAgeText())
+        createGeneAgePlot(geneAgePlotDf(data()), geneAgeText(), font())
     })
 
     output$geneAge.ui <- renderUI({
@@ -53,15 +53,17 @@ plotGeneAge <- function(input, output, session,
 
     output$geneAgePlotDownload <- downloadHandler(
         filename = function() {
-            "geneAgePlot.pdf"
+            "geneAgePlot.svg"
         },
         content = function(file) {
             ggsave(
                 file,
-                plot = createGeneAgePlot(geneAgePlotDf(data()), geneAgeText()),
-                width = 800 * geneAgeWidth() * 0.056458333,
-                height = 300 * geneAgeHeight() * 0.056458333,
-                units = "cm", dpi = 300, device = "pdf"
+                plot = createGeneAgePlot(
+                    geneAgePlotDf(data()), geneAgeText(), font()
+                ),
+                width = 800 * geneAgeWidth() * 0.035,
+                height = 300 * geneAgeHeight() * 0.035,
+                units = "cm", dpi = 300, device = "svg"
             )
         }
     )
@@ -72,7 +74,7 @@ plotGeneAge <- function(input, output, session,
         selectedGene <- getSelectedGeneAge(data(), input$plotClickGeneAge$y)
         return(selectedGene)
     })
-    
+
     output$geneAge.table <- DT::renderDataTable(
         options = list(searching = FALSE, pageLength = 10
     ), {
@@ -94,7 +96,7 @@ plotGeneAge <- function(input, output, session,
                         quote = FALSE)
         }
     )
-    
+
     return(selectedgeneAge)
 }
 
@@ -105,9 +107,8 @@ plotGeneAge <- function(input, output, session,
 getSelectedGeneAge <- function(geneAgeDf, clickedY){
     data <- geneAgeDf
     # calculate the coordinate range for each age group
-    rangeDf <- plyr::count(data, c("age"))
+    rangeDf <- data %>% dplyr::count(age)
     rangeDf <- rangeDf[seq(dim(rangeDf)[1],1),]
-    
     if (is.null(clickedY)) return()
     else {
         corY <- round(clickedY)

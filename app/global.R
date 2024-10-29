@@ -5,10 +5,8 @@
 source("R/functions.R")
 
 # List of dependent packages --------------------------------------------------
-packages <- c(
-    "ape", "bioDist", "Biostrings", "colourpicker", "data.table", "energy",
-    "GenomeInfoDbData", "ggplot2", "GO.db", "grid", "gridExtra", "RColorBrewer",
-    "shiny", "shinyBS", "shinyFiles", "shinyjs", "OmaDB", "zoo"
+packages <- c("BiocStyle","data.table", "dplyr", "ggplot2", "shiny", "shinyBS",
+    "shinyFiles", "shinyjs", "scattermore"
 )
 
 # Load packages
@@ -21,7 +19,7 @@ if (hasInternet() == TRUE) {
     if (packageVersion("ExperimentHub") < "1.11.1")
         BiocManager::install(pkgs = "ExperimentHub", version = "devel")
     library(ExperimentHub)
-    eh = ExperimentHub(localHub = TRUE)
+    eh = ExperimentHub(localHub = FALSE)
     if ("EH2549" %in% eh$ah_id) {
         myData <- query(eh, "PhyloProfileData")
     } else {

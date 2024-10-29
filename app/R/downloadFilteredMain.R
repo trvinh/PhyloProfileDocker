@@ -113,9 +113,11 @@ downloadFilteredMain <- function(
         if (length(var1()) == 1) {
             dataOut <- dataOut[dataOut$var1 >= var1()[1], ]
         } else {
-            dataOut <- dataOut[
-                dataOut$var1 >= var1()[1] & dataOut$var1 <= var1()[2], 
-            ]
+            if (max(dataOut$var1) <= var1()[2]) {
+                dataOut <- dataOut[
+                    dataOut$var1 >= var1()[1] & dataOut$var1 <= var1()[2], 
+                ]
+            }
         }
         if (!all(is.na(dataOut$var2))) {
             if (length(var2()) == 1) {
@@ -186,24 +188,23 @@ downloadFilteredMain <- function(
             }
         }
 
-        # sub select columns of dataout
-        dataOut <- dataOut[, c("geneID",
-                                 "orthoID",
-                                 "fullName",
-                                 "ncbiID",
-                                 "supertaxon",
-                                 "var1",
-                                 "var2",
-                                 "presSpec")]
+        # sub select columns of dataOut
+        dataOut <- dataOut[, c(
+            "geneID", "geneName", "orthoID", "fullName", "ncbiID", "supertaxon",
+            "var1", "var2", "presSpec"
+        )]
+        if (all(as.character(dataOut$geneID)==as.character(dataOut$geneName))) {
+            dataOut <- subset(dataOut, select = -c(geneName))
+        }
         dataOut <- dataOut[order(dataOut$geneID, dataOut$supertaxon), ]
         dataOut <- dataOut[complete.cases(dataOut), ]
 
         dataOut$geneID <- as.character(dataOut$geneID)
         dataOut$fullName <- as.character(dataOut$fullName)
         dataOut$ncbiID <- as.character(dataOut$ncbiID)
-        dataOut$supertaxon <- substr(dataOut$supertaxon,
-                                      6,
-                                      nchar(as.character(dataOut$supertaxon)))
+        dataOut$supertaxon <- substr(
+            dataOut$supertaxon, 8, nchar(as.character(dataOut$supertaxon))
+        )
         dataOut$var1 <- as.character(dataOut$var1)
         dataOut$var2 <- as.character(dataOut$var2)
         dataOut$presSpec <- dataOut$presSpec
@@ -222,7 +223,6 @@ downloadFilteredMain <- function(
         }
 
         # return data for downloading
-        dataOut <- as.matrix(dataOut)
         return(dataOut)
     })
 
@@ -243,7 +243,7 @@ downloadFilteredMain <- function(
     # render download data table -----------------------------------------------
     output$filteredMainData <- DT::renderDataTable({
         data <- downloadData()
-        data
+        as.matrix(data)
     })
 
     # download FASTA -----------------------------------------------------------
@@ -264,15 +264,17 @@ downloadFilteredMain <- function(
     # download data as long format ---------------------------------------------
     downloadDataLong <- reactive({
         downloadData <- downloadData()
-
-        if (ncol(downloadData) == 6) {
-            downloadDataLong <- downloadData[,c(1,4,2)]
-        } else if (ncol(downloadData) == 7) {
-            downloadDataLong <- downloadData[,c(1,4,2,6)]
-        } else if (ncol(downloadData) == 8) {
-            downloadDataLong <- downloadData[,c(1,4,2,6,7)]
+        if ("geneName" %in% colnames(downloadData)) {
+            downloadDataLong <- downloadData[,c(1,5,3,7,8,2)]
+        } else {
+            if (ncol(downloadData) == 6) {
+                downloadDataLong <- downloadData[,c(1,4,2)]
+            } else if (ncol(downloadData) == 7) {
+                downloadDataLong <- downloadData[,c(1,4,2,6)]
+            } else if (ncol(downloadData) == 8) {
+                downloadDataLong <- downloadData[,c(1,4,2,6,7)]
+            }
         }
-
         return(downloadDataLong)
     })
 

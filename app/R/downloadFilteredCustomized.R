@@ -116,15 +116,17 @@ downloadFilteredCustomized <- function(
     # download data as long format ---------------------------------------------
     downloadCustomDataLong <- reactive({
         downloadCustomData <- downloadCustomData()
-
-        if (ncol(downloadCustomData) == 6) {
-            downloadCustomDataLong <- downloadCustomData[,c(1,4,2)]
-        } else if (ncol(downloadCustomData) == 7) {
-            downloadCustomDataLong <- downloadCustomData[,c(1,4,2,6)]
-        } else if (ncol(downloadCustomData) == 8) {
-            downloadCustomDataLong <- downloadCustomData[,c(1,4,2,6,7)]
+        if ("geneName" %in% colnames(downloadCustomData)) {
+            downloadCustomDataLong <- downloadCustomData[,c(1,5,3,7,8,2)]
+        } else {
+            if (ncol(downloadCustomData) == 6) {
+                downloadCustomDataLong <- downloadCustomData[,c(1,4,2)]
+            } else if (ncol(downloadCustomData) == 7) {
+                downloadCustomDataLong <- downloadCustomData[,c(1,4,2,6)]
+            } else if (ncol(downloadCustomData) == 8) {
+                downloadCustomDataLong <- downloadCustomData[,c(1,4,2,6,7)]
+            }
         }
-
         return(downloadCustomDataLong)
     })
 
