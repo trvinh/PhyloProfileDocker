@@ -1,7 +1,7 @@
 #' Startup script for PhyloProfile
 #' 1) install and load packages
 #' 2) start the PhyloProfile app
-
+library(PhyloProfile)
 source("R/functions.R")
 
 # List of dependent packages --------------------------------------------------

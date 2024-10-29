@@ -1,0 +1,4 @@
+.selectize-input {
+  max-height: 80px;
+  overflow-y: auto;
+}
