@@ -1,8 +1,9 @@
-[![](https://img.shields.io/docker/v/trvinh/phyloprofile?label=Docker%20Hub)](https://hub.docker.com/r/trvinh/phyloprofile)
-[![](https://img.shields.io/docker/pulls/trvinh/phyloprofile)](https://hub.docker.com/r/trvinh/phyloprofile)
+[![Docker Pulls](https://img.shields.io/docker/pulls/trvinh/phyloprofile)](https://hub.docker.com/r/trvinh/phyloprofile)
+[![Docker Image Size](https://img.shields.io/docker/image-size/trvinh/phyloprofile/latest)](https://hub.docker.com/r/trvinh/phyloprofile)
+[![Docker Version](https://img.shields.io/docker/v/trvinh/phyloprofile)](https://hub.docker.com/r/trvinh/phyloprofile)
 
 # PhyloProfileDocker
-Docker image for PhyloProfile tool
+Docker image for [PhyloProfile](https://github.com/BIONF/PhyloProfile) tool.
 
 # HOW-TO-USE
 
