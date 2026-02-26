@@ -6,7 +6,7 @@ ncbiID	fullName	rank	parentID
 2062	Streptomycetaceae	family	85011
 85011	Streptomycetales	order	1760
 1760	Actinomycetia	class	201174
-201174	Actinobacteria	phylum	1783272
+201174	Actinomycetota	phylum	1783272
 1783272	Terrabacteria group	norank	2
 2	Bacteria	superkingdom	131567
 131567	cellular organisms	norank	1

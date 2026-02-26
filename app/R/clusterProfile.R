@@ -36,7 +36,7 @@ clusterProfile <- function(input, output, session,
     # Reactive function holding data for clustering ============================
     clusterData <- reactive({
         if (is.null(distanceMatrix)) stop("Distance matrix is NULL!")
-        df <- clusterDataDend(distanceMatrix(), clusterMethod())
+        df <- clusterDataDend(as.dist(distanceMatrix()), clusterMethod())
         return(df)
     })
 

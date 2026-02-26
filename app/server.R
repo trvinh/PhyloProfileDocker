@@ -3,6 +3,9 @@ sourceFiles = list.files( path = "R", pattern = "*.R$", full.names = TRUE)
 lapply(sourceFiles, source, .GlobalEnv)
 library(PhyloProfile)
 
+checkpoint0 <- Sys.time()
+rtCheck <- FALSE
+
 #' set size limit for input (9999mb)
 options(
     scipen = 999,
@@ -22,8 +25,9 @@ shinyServer(function(input, output, session) {
     currentNCBIinfo <- NULL
     if (file.exists(nameFullFile))
         currentNCBIinfo <- as.data.frame(data.table::fread(nameFullFile))
-    
+
     fastModeCutoff <- 600
+    demoBaseUrl <- "https://github.com/BIONF/phyloprofile-data/raw/master/rdata/"
     # =========================== INITIAL CHECKING  ============================
     # * check for internet connection ------------------------------------------
     observe({
@@ -46,12 +50,12 @@ shinyServer(function(input, output, session) {
             msg <- paste0(
                 "Please wait while preprocessed data are being downloaded!!!"
             )
-            shinyBS::createAlert(
-                session, "fileExistMsgUI", "fileExistMsg", title = "",
-                content = msg,
-                append = FALSE
-            )
-        } else shinyBS::closeAlert(session, "fileExistMsg")
+            output$fileExistMsgUI <- renderUI({
+                div(class = "alert alert-warning", msg)
+            })
+        } else {
+            output$fileExistMsgUI <- renderUI(NULL)
+        }
     })
 
     observe({
@@ -128,6 +132,7 @@ shinyServer(function(input, output, session) {
                             quote = FALSE,
                             sep = "\t"
                         )
+                        currentNCBIinfo <- preProcessedTaxonomy
                     } else {
                         system(
                             "cp data/newTaxa.txt data/preProcessedTaxonomy.txt"
@@ -135,7 +140,7 @@ shinyServer(function(input, output, session) {
                     }
                 }
             )
-            shinyBS::closeAlert(session, "fileExistMsg")
+            output$fileExistMsgUI <- renderUI(NULL)
         }
     })
 
@@ -148,7 +153,7 @@ shinyServer(function(input, output, session) {
                     ape::write.tree(preCalcTree, file = "data/preCalcTree.nw")
                 }
             )
-            shinyBS::closeAlert(session, "fileExistMsg")
+            output$fileExistMsgUI <- renderUI(NULL)
         }
     })
 
@@ -330,6 +335,114 @@ shinyServer(function(input, output, session) {
         }
     })
 
+    # ======================== TRIGGER INPUT MODALS ============================
+    observeEvent(input$uploadGeneCategory,{showModal(uploadGeneCategoryModal())})
+    observeEvent(input$fastaUpload, { showModal(uploadFastaModal()) })
+    observeEvent(input$addTaxa, { showModal(addTaxaModal()) })
+    observeEvent(input$openOmaWindows, { showModal(getOmaModal()) })
+    observeEvent(input$selectSequenceID, { showModal(seqIdFormatModal()) })
+
+    # Default colors of profile plot
+    defaultColors <- list(
+        lowColorVar1  = "#FF8C00",
+        midColorVar1  = "#40ABCF",
+        highColorVar1 = "#164294",
+        midVar1       = 0.5,
+        lowColorVar2  = "#CC8D8D",
+        midColorVar2  = "#FFFFFF",
+        highColorVar2 = "#616587",
+        midVar2       = 1,
+        paraColor     = "#07d000"
+    )
+    getInputOrDefaultColor <- function(input, id) {
+        val <- input[[id]]
+        if (is.null(val)) defaultColors[[id]] else val
+    }
+    observeEvent(input$setColor, {
+      showModal(colorSettingsModal())
+      # save color values after closing the modal
+      updateColourInput(session, "lowColorVar1", value = getInputOrDefaultColor(input, "lowColorVar1"))
+      updateColourInput(session, "midColorVar1", value = getInputOrDefaultColor(input, "midColorVar1"))
+      updateColourInput(session, "highColorVar1", value = getInputOrDefaultColor(input, "highColorVar1"))
+      updateNumericInput(session, "midVar1", value = getInputOrDefaultColor(input, "midVar1"))
+      updateColourInput(session, "lowColorVar2", value = getInputOrDefaultColor(input, "lowColorVar2"))
+      updateColourInput(session, "midColorVar2", value = getInputOrDefaultColor(input, "midColorVar2"))
+      updateColourInput(session, "highColorVar2", value = getInputOrDefaultColor(input, "highColorVar2"))
+      updateNumericInput(session, "midVar2", value = getInputOrDefaultColor(input, "midVar2"))
+      updateColourInput(session, "paraColor", value = getInputOrDefaultColor(input, "paraColor"))
+    })
+
+    # Default profile plot settings
+    # ---------------- Default configuration ----------------
+    defaultPlotConfig <- list(
+      xSize = 14,
+      ySize = 14,
+      legendSize = 12,
+      legend = "right",
+      groupLabelSize = 7,
+      groupLabelDist = 1.5,
+      groupLabelAngle = 90,
+      xAngle = 60,
+      dotZoom = 0
+    )
+
+    # ---------------- Helpers ----------------
+    #idWithSuffix <- function(base, suffix) {
+    #  if (suffix == "") base else paste0(base, suffix)
+    #}
+
+    getInputOrDefault <- function(input, id, defaults, suffix = "") {
+      fullId <- idWithSuffix(id, suffix)
+      val <- input[[fullId]]
+      if (is.null(val)) defaults[[id]] else val
+    }
+
+    # ---------------- Main Plot Modal ----------------
+    observeEvent(input$mainPlotConfig, {
+      showModal(
+        plotConfigModal(
+          suffix = "",
+          defaults = defaultPlotConfig,
+          resetId = "resetMainConfig",
+          applyId = "applyMainConfig"
+        )
+      )
+
+      # Update values inside modal from last state or defaults
+      updateNumericInput(session, "xSize", value = getInputOrDefault(input, "xSize", defaultPlotConfig))
+      updateNumericInput(session, "ySize", value = getInputOrDefault(input, "ySize", defaultPlotConfig))
+      updateNumericInput(session, "legendSize", value = getInputOrDefault(input, "legendSize", defaultPlotConfig))
+      updateSelectInput(session, "mainLegend", selected = getInputOrDefault(input, "legend", defaultPlotConfig))
+      updateNumericInput(session, "groupLabelSize", value = getInputOrDefault(input, "groupLabelSize", defaultPlotConfig))
+      updateNumericInput(session, "groupLabelDist", value = getInputOrDefault(input, "groupLabelDist", defaultPlotConfig))
+      updateSliderInput(session, "groupLabelAngle", value = getInputOrDefault(input, "groupLabelAngle", defaultPlotConfig))
+      updateSliderInput(session, "xAngle", value = getInputOrDefault(input, "xAngle", defaultPlotConfig))
+      updateSliderInput(session, "dotZoom", value = getInputOrDefault(input, "dotZoom", defaultPlotConfig))
+    })
+
+    # ---------------- Selected Plot Modal ----------------
+    observeEvent(input$selectedPlotConfig, {
+      showModal(
+        plotConfigModal(
+          suffix = "Select",
+          defaults = defaultPlotConfig,
+          resetId = "resetSelectedConfig",
+          applyId = "applySelectedConfig"
+        )
+      )
+
+      updateNumericInput(session, "xSizeSelect", value = getInputOrDefault(input, "xSize", defaultPlotConfig, "Select"))
+      updateNumericInput(session, "ySizeSelect", value = getInputOrDefault(input, "ySize", defaultPlotConfig, "Select"))
+      updateNumericInput(session, "legendSizeSelect", value = getInputOrDefault(input, "legendSize", defaultPlotConfig, "Select"))
+      updateSelectInput(session, "selectedLegend", selected = getInputOrDefault(input, "legend", defaultPlotConfig, "Select"))
+      updateNumericInput(session, "groupLabelSizeSelect", value = getInputOrDefault(input, "groupLabelSize", defaultPlotConfig, "Select"))
+      updateNumericInput(session, "groupLabelDistSelect", value = getInputOrDefault(input, "groupLabelDist", defaultPlotConfig, "Select"))
+      updateSliderInput(session, "groupLabelAngleSelect", value = getInputOrDefault(input, "groupLabelAngle", defaultPlotConfig, "Select"))
+      updateSliderInput(session, "xAngleSelect", value = getInputOrDefault(input, "xAngle", defaultPlotConfig, "Select"))
+      updateSliderInput(session, "dotZoomSelect", value = getInputOrDefault(input, "dotZoom", defaultPlotConfig, "Select"))
+    })
+
+
     # ======================== INPUT & SETTINGS TAB ============================
     # * Render input message ---------------------------------------------------
     observe({
@@ -344,22 +457,20 @@ shinyServer(function(input, output, session) {
         <a href=\"https://github.com/BIONF/PhyloProfile/wiki/Input-Data\">
         <span style=\"color: #ff0000;\">our wiki</span></span></a>."
             )
-            shinyBS::createAlert(
-                session, "inputMsgUI", "inputMsg", title = "",
-                content = msg,
-                append = FALSE
-            )
-        } else shinyBS::closeAlert(session, "inputMsg")
+            output$inputMsgUI <- renderUI({
+                div(class = "alert alert-warning", HTML(msg))
+            })
+        } else output$inputMsgUI <- renderUI(NULL)
     })
 
     # * check the validity of input file and render inputCheck.ui --------------
     output$inputCheck.ui <- renderUI({
         filein <- input$mainInput
         if (is.null(filein)) return()
-        inputType <- checkInputValidity(filein$datapath)
+        inputType <- inputType()
 
         if (inputType[1] == "noGeneID") {
-            shinyBS::updateButton(session, "do", disabled = TRUE)
+            shinyjs::disable("do")
             HTML(
                 "<font color=\"red\"><em><strong>ERROR: Unsupported input
                 format.<a
@@ -368,40 +479,29 @@ shinyServer(function(input, output, session) {
                 info</a></em></strong></font>"
             )
         } else if (inputType[1] == "emptyCell") {
-            shinyBS::updateButton(session, "do", disabled = TRUE)
+            shinyjs::disable("do")
             em(strong("ERROR: Rows have unequal length",style= "color:red"))
         } else if (inputType[1] == "moreCol") {
-            shinyBS::updateButton(session, "do", disabled = TRUE)
+            shinyjs::disable("do")
             em(strong(
                 "ERROR: More columns than column names", style = "color:red"
             ))
         } else if (inputType[1] == "invalidFormat") {
-            shinyBS::updateButton(session, "do", disabled = TRUE)
+            shinyjs::disable("do")
             em(strong(
                 "ERROR: Invalid format", style = "color:red"
             ))
         } else {
             validType = c("xml", "fasta", "wide", "long", "oma")
             if (!(inputType[1] %in% validType)) {
-                shinyBS::updateButton(session, "do", disabled = TRUE)
+                shinyjs::disable("do")
                 invalidOma <- paste(inputType, collapse = "; ")
                 msg <- paste0("ERROR: Invalid IDs found! ", invalidOma)
                 em(strong(msg, style = "color:red"))
             } else {
-                shinyBS::updateButton(session, "do", disabled = FALSE)
+                shinyjs::enable("do")
                 return()
             }
-        }
-    })
-
-    # * render download link for Demo online files -----------------------------
-    output$downloadDemo.ui <- renderUI({
-        if (input$demoData == "ampk-tor" || input$demoData == "arthropoda") {
-            em(a(
-                "Click here to download demo files",
-                href = "https://github.com/BIONF/phyloprofile-data",
-                target = "_blank"
-            ))
         }
     })
 
@@ -457,7 +557,7 @@ shinyServer(function(input, output, session) {
                 if (input$annoLocation == "from file") {
                     fileInput("fileDomainInput", "")
                 } else textInput(
-                    "domainPath", "", "", 
+                    "domainPath", "", "",
                     placeholder = "Give full path to domain directory"
                 )
             }
@@ -465,7 +565,7 @@ shinyServer(function(input, output, session) {
             if (input$annoLocation == "from file") {
                 fileInput("fileDomainInput", "")
             } else textInput(
-                "domainPath", "", "", 
+                "domainPath", "", "",
                 placeholder = "Give full path to domain directory"
             )
         }
@@ -486,6 +586,17 @@ shinyServer(function(input, output, session) {
                 "arthropoda.md"
             )
             em(a("Data description", href = url, target = "_blank"))
+        }
+    })
+
+    # * update source databases for demo data ----------------------------------
+    observe({
+        if (input$demoData != "none") {
+            updateSelectInput(session, "orthoSource", selected = "uniprot")
+            if (input$demoData == "arthropoda") {
+                updateSelectInput(session, "seedSource", selected = "orthodb")
+                updateTextInput(session, "orthodbSeedVer", value = "10-1")
+            }
         }
     })
 
@@ -518,7 +629,7 @@ shinyServer(function(input, output, session) {
                 "Please upload a single input file!"
             )
         } else {
-            shinyBS::closeAlert(session, "inputMsg")
+            output$inputMsgUI <- renderUI(NULL)
             getMainInputDir()
         }
     })
@@ -527,8 +638,7 @@ shinyServer(function(input, output, session) {
     output$checkOmaInput <- reactive({
         filein <- input$mainInput
         if (is.null(filein)) return()
-        inputType <- checkInputValidity(filein$datapath)
-        inputType == "oma"
+        inputType() == "oma"
     })
     outputOptions(output, "checkOmaInput", suspendWhenHidden = FALSE)
 
@@ -573,7 +683,7 @@ shinyServer(function(input, output, session) {
     # * close OMA parsing popup windows -------------------------------------
     observeEvent(input$getDataOma, {
         toggleModal(session, "getOmaDataWindows", toggle = "close")
-        shinyBS::updateButton(session, "getDataOma", disabled = TRUE)
+        shinyjs::disable("getDataOma")
         shinyjs::toggleState("mainInput")
         shinyjs::toggleState("fileDomainInput")
         shinyjs::toggleState("fastaUpload")
@@ -619,17 +729,17 @@ shinyServer(function(input, output, session) {
             )
         }
     })
-    
+
     # * update colorVar for heatmapPlottingFast --------------------------------
     output$colorVar.ui <- renderUI({
         choices <- setNames( c("var1","var2"), c(input$var1ID, input$var2ID))
         if (input$plotMode == "fast")
             radioButtons( #selectInput(
-                "colorVar", "Color dots by:", choices = choices, 
+                "colorVar", "Color dots by:", choices = choices,
                 selected = "var1", inline = TRUE
             )
     })
-    
+
     # * get total number of genes ----------------------------------------------
     output$totalGeneNumber.ui <- renderUI({
         geneList <- getMainInput()
@@ -637,8 +747,8 @@ shinyServer(function(input, output, session) {
 
         listIn <- input$geneList
         if (!is.null(listIn)) {
-            list <- read.table(file = listIn$datapath, header = FALSE)
-            out <- as.list(unique(list$V1))
+            geneListDf <- read.table(file = listIn$datapath, header = FALSE)
+            out <- as.list(unique(geneListDf$V1))
         }
         if (length(out) > 0) {
             strong(paste0("Total number of genes:  ", length(out)))
@@ -851,7 +961,7 @@ shinyServer(function(input, output, session) {
         }
         if (!is.null(tree)) {
             checkNewick <- checkNewick(tree, inputTaxonID())
-            if (checkNewick == 0) shinyBS::updateButton(session, "do", disabled = FALSE)
+            if (checkNewick == 0) shinyjs::enable("do")
             return(checkNewick)
         } else return()
     })
@@ -860,21 +970,21 @@ shinyServer(function(input, output, session) {
         checkNewick <- checkNewickID()
         req(checkNewick)
         if (checkNewick == 1) {
-            shinyBS::updateButton(session, "do", disabled = TRUE)
+            shinyjs::disable("do")
             HTML("<p><em><span style=\"color: #ff0000;\"><strong>
             ERROR: Parenthesis(-es) missing!</strong></span></em></p>")
         } else if (checkNewick == 2) {
-            shinyBS::updateButton(session, "do", disabled = TRUE)
+            shinyjs::disable("do")
             HTML("<p><em><span style=\"color: #ff0000;\"><strong>
             ERROR: Comma(s) missing!</strong></span></em></p>")
         } else if (checkNewick == 3) {
-            shinyBS::updateButton(session, "do", disabled = TRUE)
+            shinyjs::disable("do")
             HTML("<p><em><span style=\"color: #ff0000;\"><strong>
             ERROR: Tree contains singleton!</strong></span></em></p>")
         } else if (checkNewick == 0) {
             return()
         } else {
-            shinyBS::updateButton(session, "do", disabled = TRUE)
+            shinyjs::disable("do")
             strong(
                 em(paste0(checkNewick, " not exist in main input file!")),
                 style = "color:red"
@@ -923,7 +1033,7 @@ shinyServer(function(input, output, session) {
         sortedTaxonList <- sortedTaxonInputDf$V1
         if (length(sortedTaxonList) > 0) {
             if ("FALSE" %in% grepl("ncbi", sortedTaxonList)) {
-                shinyBS::updateButton(session, "do", disabled = TRUE)
+                shinyjs::disable("do")
                 msg <- paste0("<p><em><span style=\"color: #ff0000;\"><strong>
             ERROR: Invalid input!</strong></span></em></p>")
             } else {
@@ -935,10 +1045,19 @@ shinyServer(function(input, output, session) {
 
     observeEvent(input$inputSortedTaxa,  ({
         if (!is.null(input$inputSortedTaxa)) {
-            shinyjs::toggleState("rankSelect")
-            shinyjs::toggleState("inSelect")
+            shinyjs::disable("rankSelect")
+            shinyjs::disable("inSelect")
         }
     }))
+
+    output$taxonSelectionMsg <- renderUI({
+        if (!is.null(input$inputSortedTaxa)) {
+            em("Disabled when using a predefined taxon list!")
+        }
+        if (!is.null(input$inputTree)) {
+            em("Automatic reference taxon identification disabled while using a predefined tree!")
+        }
+    })
 
     # * reset profile plot colors ----------------------------------------------
     observeEvent(input$defaultColorVar2, {
@@ -965,7 +1084,7 @@ shinyServer(function(input, output, session) {
             selectInput(
                 "rankSelect", label = "",
                 choices = getTaxonomyRanks(),
-                selected = "class"
+                selected = "species"
             )
         } else if (input$demoData == "ampk-tor") {
             selectInput(
@@ -1019,11 +1138,35 @@ shinyServer(function(input, output, session) {
         }
     })
 
+    # * predict reference species ----------------------------------------------
+    refSpec <- reactive({
+        req(getMainInput())
+        if (rtCheck) {
+            checkpoint121 <- Sys.time()
+            print(paste("checkpoint121 - before predict refspec",checkpoint121))
+        }
+        tmp <- as.data.table(
+            getMainInput() %>% dplyr::select(geneID, ncbiID) %>% distinct()
+        )
+
+        refspecID <- tmp[, .N, by = ncbiID][order(-N)][1, ncbiID]
+        refsecpName <- getInputTaxaName(
+            input$rankSelect, refspecID, getTaxDBpath()
+        )
+        if (rtCheck) {
+            checkpoint122 <- Sys.time()
+            print(
+                paste("checkpoint122 - predict refspec done", checkpoint122,
+                      " --- ",  checkpoint122 - checkpoint121)
+            )
+        }
+        return(refsecpName)
+    })
+
     # * render list of (super)taxa ---------------------------------------------
     observe({
         choice <- inputTaxonName()
         choice$fullName <- as.factor(choice$fullName)
-
         if (input$demoData == "arthropoda") {
             hellemDf <- data.frame(
                 "name" = c(
@@ -1050,7 +1193,6 @@ shinyServer(function(input, output, session) {
                 )
             )
             rankName <- input$rankSelect
-
             updateSelectizeInput(
                 session, "inSelect", "", server = TRUE,
                 choices = as.list(levels(choice$fullName)),
@@ -1082,7 +1224,6 @@ shinyServer(function(input, output, session) {
                 )
             )
             rankName <- input$rankSelect
-
             updateSelectizeInput(
                 session, "inSelect", "", server = TRUE,
                 choices = as.list(levels(choice$fullName)),
@@ -1116,24 +1257,54 @@ shinyServer(function(input, output, session) {
                     )
                 )
             } else {
+                predRefspec <- refSpec()
+                selectedRefspec <- levels(choice$fullName)[1]
+                if (nrow(predRefspec) > 0) {
+                    if (predRefspec$fullName %in% levels(choice$fullName))
+                        selectedRefspec <- predRefspec$fullName
+                }
                 if (length(choice$fullName) > 0) {
+                    # remove cache first
+                    updateSelectizeInput(
+                        session, "inSelect", choices = NULL, server = TRUE
+                    )
+                    # then update the list
                     updateSelectizeInput(
                         session, "inSelect", "", server = TRUE,
                         choices = as.list(levels(choice$fullName)),
-                        selected = levels(choice$fullName)[1]
+                        selected = selectedRefspec
                     )
                 }
             }
         }
     })
 
+    # * update list of (super)taxa based on taxa from user-defined tree
+    observeEvent(input$inputTree,{
+        req(inputTaxonName())
+        # read tree
+        treeIn <- input$inputTree
+        inputTaxaTree <- ape::read.tree(file = treeIn$datapath)
+        # Update list for taxon selection using taxa from input tree
+        tree_taxa <- gsub("ncbi", "", sortTaxaFromTree(inputTaxaTree))
+        subset_inputTaxa <- inputTaxonName() %>% filter(
+            ncbiID %in% tree_taxa
+        )
+        updateSelectizeInput(
+            session, "inSelect", "", server = TRUE,
+            choices = as.list(levels(as.factor(subset_inputTaxa$fullName))),
+            selected = levels(as.factor(subset_inputTaxa$fullName))[1]
+        )
+    })
+
     # * enable "PLOT" button ---------------------------------------------------
     observeEvent(input$rankSelect,  ({
-        if (input$rankSelect == "") shinyBS::updateButton(session, "do", disabled = TRUE)
-        else {
+        if (input$rankSelect == "") {
+            shinyjs::disable("do")
+        } else {
             unkTaxa <- unkTaxa()
             if (length(unkTaxa) == 0) {
-                shinyBS::updateButton(session, "do", disabled = FALSE)
+                shinyjs::enable("do")
             }
         }
     }))
@@ -1155,6 +1326,8 @@ shinyServer(function(input, output, session) {
             shinyjs::disable("demoData")
             shinyjs::disable("rankSelect")
             shinyjs::disable("taxDbLoc")
+            shinyjs::disable("doDomainPlot")
+            shinyjs::disable("newDone")
         }
     })
 
@@ -1177,11 +1350,11 @@ shinyServer(function(input, output, session) {
     # * enable/disable update plot button --------------------------------------
     observe({
         if (input$autoUpdate == TRUE) {
-            shinyBS::updateButton(session, "applyFilter", disabled = TRUE)
-            shinyBS::updateButton(session, "updateBtn", disabled = TRUE)
+            shinyjs::disable("applyFilter")
+            shinyjs::disable("updateBtn")
         } else {
-            shinyBS::updateButton(session, "applyFilter", disabled = FALSE)
-            shinyBS::updateButton(session, "updateBtn", disabled = FALSE)
+            shinyjs::enable("applyFilter")
+            shinyjs::enable("updateBtn")
         }
     })
 
@@ -1273,19 +1446,31 @@ shinyServer(function(input, output, session) {
 
     # * render filter slidebars for Gene age estimation plot -------------------
     output$var1Age.ui <- renderUI({
-        createSliderCutoff(
-            "var1Age",
-            paste(input$var1ID, "cutoff:"),
-            input$var1[1], input$var1[2], input$var1ID
-        )
+        if(is.null(input$var1[1])) {
+            createSliderCutoff(
+                "var1Age", paste(input$var1ID, "cutoff:"), 0.0,1.0, input$var1ID
+            )
+        } else {
+            createSliderCutoff(
+                "var1Age",
+                paste(input$var1ID, "cutoff:"),
+                input$var1[1], input$var1[2], input$var1ID
+            )
+        }
     })
 
     output$var2Age.ui <- renderUI({
-        createSliderCutoff(
-            "var2Age",
-            paste(input$var2ID, "cutoff:"),
-            input$var2[1], input$var2[2], input$var2ID
-        )
+        if(is.null(input$var2[1])) {
+            createSliderCutoff(
+                "var2Age", paste(input$var2ID, "cutoff:"), 0.0,1.0, input$var2ID
+            )
+        } else {
+            createSliderCutoff(
+                "var2Age",
+                paste(input$var2ID, "cutoff:"),
+                input$var2[1], input$var2[2], input$var2ID
+            )
+        }
     })
 
     output$percentAge.ui <- renderUI({
@@ -1555,10 +1740,13 @@ shinyServer(function(input, output, session) {
     newIndex$value <- 1
 
     observeEvent(input$newAdd, {
+        req(input$newID, input$newName, input$newRank, input$newParent)
         newTaxa$Df[newIndex$value, ] <- c(
             input$newID, input$newName, input$newRank, input$newParent
         )
         newIndex$value <- newIndex$value + 1
+
+        req(input$newID)
         updateTextInput(session, "newID", value = as.numeric(input$newID) + 1)
         updateTextInput(session, "newName", value = "")
         updateTextInput(session, "newRank", value = "norank")
@@ -1579,19 +1767,21 @@ shinyServer(function(input, output, session) {
             comment.char = ""
         )
         if (ncol(tmpDf) != 4) {
-            shinyBS::createAlert(
-                session, "wrongNewTaxa", "wrongNewTaxaMsg",
-                content = "Wrong format. Please check your file!",
-                append = FALSE
-            )
+            output$wrongNewTaxaUI <- renderUI({
+                div(
+                    class = "alert alert-danger",
+                    "Wrong format. Please check your file!"
+                )
+            })
             shinyjs::disable("newDone")
             return()
         } else {
-            shinyBS::createAlert(
-                session, "wrongNewTaxa", "wrongNewTaxaMsg",
-                content = "Click Finish adding to continue!",
-                append = FALSE
-            )
+            output$wrongNewTaxaUI <- renderUI({
+                div(
+                    class = "alert alert-danger",
+                    "Click Finish adding to continue!"
+                )
+            })
             shinyjs::enable("newDone")
             colnames(tmpDf) <- c("ncbiID", "fullName", "rank", "parentID")
             newTaxa$Df <- tmpDf
@@ -1605,7 +1795,7 @@ shinyServer(function(input, output, session) {
 
     # * close adding taxa windows ----------------------------------------------
     observeEvent(input$newDone, {
-        toggleModal(session, "addTaxaWindows", toggle = "close")
+        removeModal()
         write.table(
             newTaxa$Df, "data/newTaxa.txt",
             sep = "\t",
@@ -1618,9 +1808,9 @@ shinyServer(function(input, output, session) {
     # * check if data is loaded and "parse" button is clicked and confirmed ----
     v1 <- reactiveValues(parse = FALSE)
     observeEvent(input$butParse, {
-        toggleModal(session, "parseConfirm", toggle = "close")
+        showModal(parseConfirmModal())
         v1$parse <- input$butParse
-        shinyBS::updateButton(session, "butParse", disabled = TRUE)
+        shinyjs::disable("butParse")
         shinyjs::toggleState("newTaxaAsk")
         shinyjs::toggleState("mainInput")
     })
@@ -1635,7 +1825,7 @@ shinyServer(function(input, output, session) {
 
         filein <- input$mainInput
         req(filein)
-        inputType <- checkInputValidity(filein$datapath)
+        inputType <- inputType()
 
         if (inputType == "xml" |
             inputType == "long" |
@@ -1829,6 +2019,7 @@ shinyServer(function(input, output, session) {
                 )
             }
         }
+        removeModal()
         return()
     })
 
@@ -1895,7 +2086,7 @@ shinyServer(function(input, output, session) {
             input$demoData == "none"
         ) {
             v$doPlot <- FALSE
-            shinyBS::updateButton(session, "do", disabled = TRUE)
+            shinyjs::disable("do")
         }
     })
     w <- reactiveValues(doCusPlot = FALSE)
@@ -1907,20 +2098,26 @@ shinyServer(function(input, output, session) {
             input$demoData == "none"
         ) {
             w$doCusPlot <- FALSE
-            shinyBS::updateButton(session, "plotCustom", disabled = TRUE)
+            shinyjs::disable("plotCustom")
         }
     })
-    # observeEvent(input$applyFilterCustom, {
-    #     w$doCusPlot <- input$applyFilterCustom
-    #     filein <- input$mainInput
-    #     if (
-    #         input$mainInputType == "file" & is.null(filein) &
-    #         input$demoData == "none"
-    #     ) {
-    #         w$doCusPlot <- FALSE
-    #         shinyBS::updateButton(session, "applyFilterCustom", disabled = TRUE)
-    #     }
-    # })
+
+    # * disable the Function navbarMenu until PLOT button is clicked -----------
+    to_hide <- c(
+        "profile_clustering",
+        "distribution_analysis",
+        "gene_age_estimation",
+        "core_gene_ident",
+        "group_comparison"
+    )
+    observe({
+        for (v in to_hide) {
+            shinyjs::runjs(paste0('$("a[data-value=\'', v, '\']").hide();'))
+        }
+    })
+    observeEvent(input$do, {
+        shinyjs::runjs('$("a[data-value]").show();')
+    })
 
     # * check if genes ordered by distances has been selected ------------------
     output$applyClusterCheck.ui <- renderUI({
@@ -1958,20 +2155,23 @@ shinyServer(function(input, output, session) {
     finalOmaDf <- reactive({
         filein <- input$mainInput
         req(filein)
-        inputType <- checkInputValidity(filein$datapath)
-        if (inputType == "oma") {
-            if (input$getDataOma[1] == 0) return()
+        if (inputType() == "oma") {
+            req(input$selectedOmaType)
+            if (is.null(input$selectedOmaType) || input$getDataOma[1] == 0)
+                return()
             omaIDs <- fread(
                 file = filein$datapath,
                 header = FALSE,
                 stringsAsFactors = FALSE,
                 select = 1
             )
+            req(input$selectedOmaType)
             return(getOmaBrowser(omaIDs$V1, input$selectedOmaType))
         } else return()
     })
-    
+
     # * get gene names (if provided) -------------------------------------------
+    observeEvent(input$uploadGeneName, { showModal(uploadGeneNameModal()) })
     getGeneNames <- reactive({
         geneNameFile <- input$geneName
         if (!is.null(geneNameFile)) {
@@ -1998,9 +2198,22 @@ shinyServer(function(input, output, session) {
         return(inputNameDt)
     })
 
+    # * check main input format (wide, long, xml, fasta, or invalidFormat) -----
+    inputType <- reactive ({
+        req(input$mainInputType)
+        filein <- input$mainInput
+        if (is.null(filein)) return()
+        return(checkInputValidity(filein$datapath))
+    })
+
     # * convert main input file in any format into long format dataframe -------
     getMainInput <- reactive({
         req(input$mainInputType)
+        if (rtCheck) {
+            checkpoint11 <- Sys.time()
+            print(paste("checkpoint11 - before reading main input",checkpoint11))
+        }
+
         withProgress(message = 'Reading main input...', value = 0.5, {
             if (input$mainInputType == "folder") {
                 req(getMainInputDir())
@@ -2011,51 +2224,52 @@ shinyServer(function(input, output, session) {
                 } else return()
             } else {
                 if (input$demoData == "arthropoda") {
-                    longDataframe <- myData[["EH2547"]]
+                    load(url(paste0(demoBaseUrl, "arthropodaPhyloProfile.RData")))
+                    longDataframe <- arthropodaPhyloProfile
                 } else if (input$demoData == "ampk-tor") {
-                    longDataframe <- myData[["EH2544"]]
+                    load(url(paste0(demoBaseUrl, "ampkTorPhyloProfile.RData")))
+                    longDataframe <- ampkTorPhyloProfile
                 } else if (input$demoData == "preCalcDt") {
                     longDataframe <- createLongMatrix(i_mainInput)
                 } else {
                     filein <- input$mainInput
                     if (is.null(filein)) return()
-                    inputType <- checkInputValidity(filein$datapath)
-                    if (inputType == "oma") {
+                    if (inputType() == "oma") {
                         if (input$getDataOma[1] == 0) return()
                         longDataframe <- createProfileFromOma(finalOmaDf())
                         longDataframe <- as.data.frame(unclass(longDataframe))
-                    } else longDataframe <- createLongMatrix(filein$datapath)
-                }
-
-                # convert geneID, ncbiID and orthoID into factor and
-                # var1, var2 into numeric
-                for (i in seq_len(3)) {
-                    longDataframe[, i] <- as.factor(longDataframe[, i])
-                }
-                if (ncol(longDataframe) > 3 & ncol(longDataframe) < 6) {
-                    for (j in seq(4, ncol(longDataframe))){
-                        longDataframe[,j] <- suppressWarnings(
-                            as.numeric(as.character(longDataframe[,j]))
-                        )
+                    } else {
+                        longDataframe <- createLongMatrix(filein$datapath)
                     }
                 }
-                if (ncol(longDataframe) == 6)
-                    longDataframe[, 6] <- as.factor(longDataframe[, 6])
-                # remove duplicated lines
-                longDataframe <- longDataframe[!duplicated(longDataframe),]
-                # remove fdogMA orthologs
-                if (input$showAllTaxa == FALSE) {
-                    longDataframe <- longDataframe[
-                        longDataframe$orthoID != "fdogMA",
-                    ]
+
+                if (input$demoData == "arthropoda" | input$demoData == "ampk-tor") {
+                    # convert geneID, ncbiID and orthoID into factor and
+                    # var1, var2 into numeric
+                    for (i in seq_len(3)) {
+                        longDataframe[, i] <- as.factor(longDataframe[, i])
+                    }
+                    if (ncol(longDataframe) > 3 & ncol(longDataframe) < 6) {
+                        for (j in seq(4, ncol(longDataframe))){
+                            longDataframe[,j] <- suppressWarnings(
+                                as.numeric(as.character(longDataframe[,j]))
+                            )
+                        }
+                    }
                 }
+
+                # remove fdogMA orthologs if required
+                if (input$showAllTaxa == FALSE)
+                    longDataframe <- longDataframe[longDataframe$orthoID != "fdogMA",]
             }
             # update number of genes to plot based on input
-            if (nlevels(as.factor(longDataframe$geneID)) <= 1500) {
-                updateNumericInput(
-                    session, "endIndex",
-                    value = nlevels(as.factor(longDataframe$geneID))
-                )
+            updateNumericInput(
+                session, "endIndex",
+                value = nlevels(as.factor(longDataframe$geneID))
+            )
+            # ensure a minimum of 5 columns
+            while (ncol(longDataframe) < 5) {
+                longDataframe[paste0("newVar", ncol(longDataframe) + 1)] <- 1
             }
             # add geneName column if not yet exist
             if (!("geneName" %in% colnames(longDataframe))) {
@@ -2063,13 +2277,21 @@ shinyServer(function(input, output, session) {
                     # add gene names if specified by uploaded file
                     longDataframe <- longDataframe %>%
                         left_join(getGeneNames(), by = "geneID")
-                    longDataframe$geneName[is.na(longDataframe$geneName)] <- 
+                    longDataframe$geneName[is.na(longDataframe$geneName)] <-
                         longDataframe$geneID[is.na(longDataframe$geneName)]
                 } else {
                     longDataframe$geneName <- longDataframe$geneID
                 }
-            }   
+            }
             # return
+            if (rtCheck) {
+                checkpoint12 <- Sys.time()
+                print(paste(
+                    "checkpoint12 - reading main input done at", checkpoint12,
+                    " --- ",  checkpoint12 - checkpoint11
+                ))
+            }
+
             return(longDataframe)
         })
     })
@@ -2080,7 +2302,7 @@ shinyServer(function(input, output, session) {
             if (v$doPlot == FALSE) return()
             if (input$demoData == "none") {
                 filein <- input$mainInput
-                inputType <- checkInputValidity(filein$datapath)
+                inputType <- inputType()
             } else inputType <- "demo"
 
             if (inputType == "oma") {
@@ -2128,9 +2350,11 @@ shinyServer(function(input, output, session) {
                         }
                     } else {
                         if (input$demoData == "arthropoda") {
-                            domainDf <- myData[["EH2549"]]
+                            load(url(paste0(demoBaseUrl, "arthropodaDomains.RData")))
+                            domainDf <- arthropodaDomains
                         } else {
-                            domainDf <- myData[["EH2546"]]
+                            load(url(paste0(demoBaseUrl, "ampkTorDomains.RData")))
+                            domainDf <- ampkTorDomains
                         }
 
                         domainDf$seedID <- as.character(domainDf$seedID)
@@ -2162,18 +2386,31 @@ shinyServer(function(input, output, session) {
                     }
                 }
             }
+            if ("weight" %in% colnames(domainDf)) {
+                domainDf$weight <- as.numeric(domainDf$weight)
+                domainDf$weight <- round(domainDf$weight, 2)
+            }
             return(domainDf)
         })
     })
 
     # * get ID list of input taxa from main input ------------------------------
     inputTaxonID <- reactive({
+        if (rtCheck) st <- Sys.time()
         if (input$demoData == "arthropoda" |
             input$demoData == "ampk-tor" |
             length(unkTaxa()) == 0) {
             withProgress(message = 'Getting input taxon IDs...', value = 0.5, {
                 longDataframe <- getMainInput()
                 inputTaxa <- getInputTaxaID(longDataframe)
+                if (rtCheck) {
+                    checkpoint21 <- Sys.time()
+                    print(paste(
+                        "checkpoint21 - get input tax IDs done", checkpoint21,
+                        " --- ",  checkpoint21 - st
+                    ))
+                }
+                return(inputTaxa)
             })
         } else return()
     })
@@ -2181,6 +2418,7 @@ shinyServer(function(input, output, session) {
     # * get NAME list of all (super)taxa ---------------------------------------
     inputTaxonName <- reactive({
         req(input$rankSelect)
+        if (rtCheck) st <- Sys.time()
         if (is.null(getMainInput()) & input$demoData == "none") return()
         if (length(unkTaxa()) > 0) return()
         if (input$rankSelect == "") return()
@@ -2188,6 +2426,13 @@ shinyServer(function(input, output, session) {
             inputTaxaName <- getInputTaxaName(
                 input$rankSelect, inputTaxonID(), getTaxDBpath()
             )
+            if (rtCheck) {
+                checkpoint31 <- Sys.time()
+                print(paste(
+                    "checkpoint31 - get input tax names done", checkpoint31,
+                    " --- ",  checkpoint31 - st
+                ))
+            }
             return(inputTaxaName)
         })
     })
@@ -2197,6 +2442,12 @@ shinyServer(function(input, output, session) {
         req(isTruthy(v$doPlot)|isTruthy(w$doCusPlot))
         req(input$rankSelect)
         req(input$inSelect)
+
+        if (rtCheck) {
+            checkpoint41 <- Sys.time()
+            print(paste("checkpoint41 - before sorting taxa", checkpoint41))
+        }
+
         withProgress(message = 'Sorting input taxa...', value = 0.5, {
             if (input$mainInputType == "folder") {
                 req(getMainInputDir())
@@ -2210,12 +2461,16 @@ shinyServer(function(input, output, session) {
                 inputTaxaTree <- NULL
                 if (input$demoData == "preCalcDt") {
                     if (!is.null(i_treeInput)) {
-                        inputTaxaTree <- read.tree(file = i_treeInput)
+                        inputTaxaTree <- ape::read.tree(file = i_treeInput)
                     }
                 } else {
                     treeIn <- input$inputTree
                     if (!is.null(treeIn)) {
-                        inputTaxaTree <- read.tree(file = treeIn$datapath)
+                        inputTaxaTree <- ape::read.tree(file = treeIn$datapath)
+                    } else {
+                        preCalcTree <- paste0(getTaxDBpath(), "/preCalcTree.nw")
+                        if (file.exists(preCalcTree))
+                            inputTaxaTree <- ape::read.tree(file = preCalcTree)
                     }
                 }
                 # get list of sorted taxa
@@ -2242,10 +2497,18 @@ shinyServer(function(input, output, session) {
                 )
             }
             # return
+            if (rtCheck) {
+                checkpoint42 <- Sys.time()
+                print(paste(
+                    "checkpoint42 - sorting taxa done", checkpoint42, " --- ",
+                    checkpoint42 - checkpoint41
+                ))
+            }
+
             return(sortedOut)
         })
     })
-    
+
     # * get list of all input (super)taxa and their ncbi IDs -------------------
     allInputTaxa <- reactive({
         req(isTruthy(v$doPlot)|isTruthy(w$doCusPlot))
@@ -2253,6 +2516,7 @@ shinyServer(function(input, output, session) {
             input$applyFilterCustom
             input$applyFilter
         }
+        if (rtCheck) st <- Sys.time()
         allTaxa <- sortedtaxaList()
         allTaxa <- allTaxa[,c("supertaxonID", "supertaxon")]
         allTaxa$supertaxon <- factor(
@@ -2262,6 +2526,13 @@ shinyServer(function(input, output, session) {
             levels = substr(
                 levels(as.factor(allTaxa$supertaxon)), 8,
                 nchar(levels(as.factor(allTaxa$supertaxon)))))
+        if (rtCheck) {
+            checkpoint51 <- Sys.time()
+            print(paste(
+                "checkpoint51 - get all input (super)taxa done", checkpoint51,
+                " --- ",  checkpoint51 - st
+            ))
+        }
         if (input$showAllTaxa) {
             return(allTaxa[!duplicated(allTaxa),])
         } else return()
@@ -2269,108 +2540,131 @@ shinyServer(function(input, output, session) {
 
     # * count taxa for each supertaxon -----------------------------------------
     getCountTaxa <- reactive({
-        taxaCount <- sortedtaxaList() %>% dplyr::count(supertaxon)
+        req(sortedtaxaList())
+        if (rtCheck) st <- Sys.time()
+        taxaCount <- sortedtaxaList() %>% dplyr::group_by(supertaxon) %>%
+            dplyr::summarise(n = n(), .groups = "drop")
+        if (rtCheck) {
+            checkpoint61 <- Sys.time()
+            print(paste(
+                "checkpoint61 - count taxa done", checkpoint61, " --- ",
+                checkpoint61 - st
+            ))
+        }
         return(taxaCount)
     })
 
-    # * get subset data for plotting (default 30 genes if > 50 genes) ----------
+    # * get subset data for plotting -------------------------------------------
     preData <- reactive({
         req(isTruthy(v$doPlot)|isTruthy(w$doCusPlot))
         req(input$mainInputType)
+        if (rtCheck) {
+            checkpoint71 <- Sys.time()
+            print(paste("checkpoint71 - before subseting input", checkpoint71))
+        }
+        ### if input a folder
         if (input$mainInputType == "folder") {
             req(getMainInputDir())
             if (length(checkMainInputDir()) == 4) {
-                data <- readRDS(
-                    paste0(getMainInputDir(),"/preData.rds")
-                )
-                return(data)
-            } else return()
-        } else {
-            longDataframe <- getMainInput()
-            # isolate start and end gene index
-            input$applyFilter
-            if (input$autoUpdate == TRUE) {
-                startIndex <- input$stIndex
-                endIndex <- input$endIndex
-            } else {
-                startIndex <- isolate(input$stIndex)
-                endIndex <- isolate(input$endIndex)
+                return(readRDS(paste0(getMainInputDir(),"/preData.rds")))
             }
-
-            if (is.na(endIndex)) endIndex <- 1000
-            withProgress(message = 'Subseting data...', value = 0.5, {
-                longDataframe <- sortGeneIDs(
-                    longDataframe, input$orderGenes, checkInputSortedGenes()
-                )
-                # filter preData based on UMAP selection
-                data <- longDataframe
-                if (!(v$doPlot)) {
-                    if (isTruthy(input$addSpecUmap)|isTruthy(input$addGeneUmap)) {
-                        selectedTaxa <- longDataframe$ncbiID
-                        if (input$addSpecUmap) {
-                            umapTaxa <- umapSelectedTaxa()
-                            selectedTaxa <- unique(head(umapTaxa$`NCBI taxon ID`))
-                        }
-                        umapGenes <- umapSelectedGenes()
-                        selectedGenes <- unique(umapGenes$geneID)
-                        if (length(selectedGenes) > 0) {
-                            data <- longDataframe %>% filter(
-                                geneID %in% selectedGenes & ncbiID %in% selectedTaxa
-                            )
-                            data$geneID <- droplevels(data$geneID)
-                            data$ncbiID <- droplevels(data$ncbiID)
-                        } else {
-                            return()
-                        }
-                    }
-                } else {
-                    listIn <- input$geneList
-                    if (!is.null(listIn)) {
-                        list <- read.table(file = listIn$datapath, header = FALSE)
-                        listGeneOri <- unique(list$V1)
-                        # update number of endIndex
-                        if (length(listGeneOri) <= 1500) {
-                            updateNumericInput(
-                                session,
-                                "endIndex", value = length(listGeneOri)
-                            )
-                        }
-                        if (startIndex <= length(listGeneOri)) {
-                            listGene <- listGeneOri[startIndex:endIndex]
-                        } else listGene <- listGeneOri
-                        listGene <- listGene[!is.na(listGene)]
-                        data <- longDataframe[longDataframe$geneID %in% listGene, ]
-                    } else {
-                        subsetID <-
-                            levels(longDataframe$geneID)[startIndex:endIndex]
-                        data <- longDataframe[longDataframe$geneID %in% subsetID, ]
-                    }
-                }
-
-                if (ncol(data) < 5) {
-                    for (i in seq_len(5 - ncol(data))) {
-                        data[paste0("newVar", i)] <- 1
-                    }
-                }
-
-                # return preData
-                if (nrow(data) == 0) return()
-                if (ncol(data) < 6) {
-                    colnames(data) <- c("geneID","ncbiID","orthoID","var1","var2")
-                } else {
-                    colnames(data) <- c(
-                        "geneID", "ncbiID", "orthoID", "var1", "var2", "geneName"
-                    )
-                }
-                return(data)
-            })
+            return(NULL)
         }
+        ### if input a file
+        longDataframe <- getMainInput()
+        # isolate start and end gene index
+        input$applyFilter
+        if (input$autoUpdate == TRUE) {
+            startIndex <- input$stIndex
+            endIndex <- input$endIndex
+        } else {
+            startIndex <- isolate(input$stIndex)
+            endIndex <- isolate(input$endIndex)
+        }
+        if (is.na(endIndex)) endIndex <- 1000
+
+        withProgress(message = 'Subseting data...', value = 0.5, {
+            longDataframe <- sortGeneIDs(
+                longDataframe, input$orderGenes, checkInputSortedGenes()
+            )
+            # filter preData based on DIM reduction selection
+            if (!v$doPlot && (isTruthy(input$addSpecDimRed) || isTruthy(input$addGeneDimRed))) {
+                selectedTaxa <- longDataframe$ncbiID
+                if (input$addSpecDimRed) {
+                    dimRedTaxa <- dimRedSelectedTaxa()
+                    selectedTaxa <- unique(head(dimRedTaxa$`NCBI taxon ID`))
+                }
+                dimRedGenes <- dimRedSelectedGenes()
+                selectedGenes <- unique(dimRedGenes$geneID)
+
+                if (length(selectedGenes) > 0) {
+                    data <- longDataframe %>%
+                        filter(geneID %in% selectedGenes & ncbiID %in% selectedTaxa) %>%
+                        droplevels()
+                } else {
+                    return(NULL)
+                }
+            } else {
+                # Handle custom gene list or subset ID
+                geneList <- input$geneList
+                if (!is.null(geneList)) {
+                    geneListDf <- read.table(file = geneList$datapath, header = FALSE)
+                    listGeneOri <- unique(geneListDf$V1)
+
+                    listGene <- listGeneOri[startIndex:min(endIndex, length(listGeneOri))]
+                    data <- longDataframe[longDataframe$geneID %in% listGene[!is.na(listGene)], ]
+                } else {
+                    subsetID <- levels(longDataframe$geneID)[startIndex:endIndex]
+                    data <- longDataframe[longDataframe$geneID %in% subsetID, ]
+                }
+            }
+            # rename columns
+            if (nrow(data) == 0) return()
+            if (ncol(data) < 6) {
+                colnames(data) <- c("geneID","ncbiID","orthoID","var1","var2")
+            } else {
+                colnames(data) <- c(
+                    "geneID", "ncbiID", "orthoID", "var1", "var2", "geneName"
+                )
+            }
+            data$geneID <- droplevels(data$geneID)
+            # scale var1 and var2 to 0 and 1 if needed
+            msg1 <- "*** PLEASE NOTE: VALUES IN COLUMN"
+            msg2 <- "HAVE BEEN SCALED TO RANGE FROM 0 TO 1 !!!"
+            if (any(data$var1 > 1)) {
+                warning(paste(msg1, input$var1ID, msg2))
+                data <- data.frame(
+                    data %>% group_by(geneID) %>% mutate(var1 = scale01(var1)) %>%
+                        ungroup()
+                )
+            }
+            if (any(data$var2 > 1)) {
+                warning(paste(msg1, input$var2ID, msg2))
+                data <- data.frame(
+                    data %>% group_by(geneID) %>% mutate(var2 = scale01(var2)) %>%
+                        ungroup()
+                )
+            }
+            # return preData
+            if (rtCheck) {
+                checkpoint72 <- Sys.time()
+                print(paste(
+                    "checkpoint72 - subseting input done", checkpoint72,
+                    " --- ",  checkpoint72 - checkpoint71
+                ))
+            }
+            return(data)
+        })
     })
 
     # * creating main dataframe for subset taxa (in species/strain level) ------
     getFullData <- reactive({
         req(isTruthy(v$doPlot)|isTruthy(w$doCusPlot))
         req(input$mainInputType)
+        if (rtCheck) {
+            checkpoint81 <- Sys.time()
+            print(paste("checkpoint81 - before get full data", checkpoint81))
+        }
         if (input$mainInputType == "folder") {
             req(getMainInputDir())
             if (length(checkMainInputDir()) == 4) {
@@ -2392,13 +2686,27 @@ shinyServer(function(input, output, session) {
                 } else {
                     coorthologCutoffMax <- isolate(input$coortholog)
                 }
+                if (rtCheck) {
+                    checkpoint81a <- Sys.time()
+                    print(paste(
+                        "checkpoint81a - start get full data", checkpoint81a,
+                        " --- ", checkpoint81a- checkpoint81
+                    ))
+                }
                 fullMdData <- parseInfoProfile(
                     inputDf = preData(),
                     sortedInputTaxa = sortedtaxaList(),
                     taxaCount = getCountTaxa(),
                     coorthoCOMax = coorthologCutoffMax
                 )
-                return(fullMdData)
+                if (rtCheck) {
+                    checkpoint82 <- Sys.time()
+                    print(paste(
+                        "checkpoint82 - get full data done", checkpoint82,
+                        " --- ",  checkpoint82- checkpoint81a
+                    ))
+                }
+                return(fullMdData %>% filter(!is.na(abbrName)))
             })
         }
     })
@@ -2409,6 +2717,10 @@ shinyServer(function(input, output, session) {
         {
             input$applyFilterCustom
             input$applyFilter
+        }
+        if (rtCheck) {
+            checkpoint91 <- Sys.time()
+            print(paste("checkpoint91 - before filter full data", checkpoint91))
         }
         withProgress(message = 'Creating data for plotting...', value = 0.5, {
             # check input file
@@ -2469,6 +2781,13 @@ shinyServer(function(input, output, session) {
             } else colorByGroup = FALSE
 
             # create data for heatmap plotting
+            if (rtCheck) {
+                checkpoint91a <- Sys.time()
+                print(paste(
+                    "checkpoint91a - start filter full data", checkpoint91a,
+                    " --- ", checkpoint91a- checkpoint91
+                ))
+            }
             filteredDf <- filterProfileData(
                 DF = getFullData(),
                 taxaCount = getCountTaxa(),
@@ -2484,6 +2803,13 @@ shinyServer(function(input, output, session) {
                 var1AggregateBy = input$var1AggregateBy,
                 var2AggregateBy = input$var2AggregateBy
             )
+            if (rtCheck) {
+                checkpoint92 <- Sys.time()
+                print(paste(
+                    "checkpoint92 - filter full data done", checkpoint92,
+                    " --- ",  checkpoint92- checkpoint91a
+                ))
+            }
             return(filteredDf)
         })
     })
@@ -2492,13 +2818,30 @@ shinyServer(function(input, output, session) {
     dataHeat <- reactive({
         req(isTruthy(v$doPlot)|isTruthy(w$doCusPlot))
         req(filteredDataHeat())
+        if (rtCheck) {
+            checkpoint101 <- Sys.time()
+            print(paste("checkpoint101 - before reduce profile", checkpoint101))
+        }
         dataHeat <- reduceProfile(filteredDataHeat())
+        if (rtCheck) {
+            checkpoint102 <- Sys.time()
+            print(paste(
+                "checkpoint102 - reduce profile done", checkpoint102, " --- ",
+                checkpoint102- checkpoint101
+            ))
+        }
         return(dataHeat)
     })
 
     # * clustered heatmap data -------------------------------------------------
     clusteredDataHeat <- reactive({
         req(isTruthy(v$doPlot)|isTruthy(w$doCusPlot))
+        if (rtCheck) {
+            checkpoint111 <- Sys.time()
+            print(paste(
+                "checkpoint111 - before cluster heatmap data", checkpoint111
+            ))
+        }
         dataHeat <- dataHeat()
         if (nlevels(dataHeat$supertaxon) == 1) return(dataHeat)
         if (!is.null(i_clusterMethod)) clusterMethod <- i_clusterMethod
@@ -2508,49 +2851,51 @@ shinyServer(function(input, output, session) {
             withProgress(message = 'Clustering profile data...', value = 0.5, {
                 dat <- getProfiles()
                 # do clustering based on distance matrix
-                row.order <- hclust(
-                    getDistanceMatrixProfiles(), method = clusterMethod
+                row.order <- fastcluster::hclust(
+                    as.dist(getDistanceMatrixProfiles()), method = clusterMethod
                 )$order
 
                 # re-order distance matrix accoring to clustering
-                datNew <- dat[row.order, ] #col.order
+                datNew <- dat[row.order, ]
 
                 # return clustered gene ID list
                 clusteredGeneIDs <- as.factor(row.names(datNew))
-
                 # sort original data according to clusteredGeneIDs
                 dataHeat$geneID <- factor(
                     dataHeat$geneID, levels = clusteredGeneIDs
                 )
-                orderedName <- unlist(
-                    vapply(
-                        levels(dataHeat$geneID),
-                        function(x)
-                            as.character(
-                                unique(dataHeat$geneName[dataHeat$geneID == x])
-                            ),
-                        character(1)
-                    )
+                orderedName <- unique(
+                    dataHeat[
+                        order(match(dataHeat$geneID, clusteredGeneIDs)),
+                        "geneName"
+                    ]
                 )
                 dataHeat$geneName <- factor(
-                    dataHeat$geneName, levels = orderedName
+                    dataHeat$geneName, levels = orderedName$geneName
                 )
                 dataHeat <- dataHeat[!is.na(dataHeat$geneID),]
+                if (rtCheck) {
+                    checkpoint112 <- Sys.time()
+                    print(paste(
+                        "checkpoint112 - cluster heatmap data done",
+                        checkpoint112, " --- ",  checkpoint112 - checkpoint111
+                    ))
+                }
                 return(dataHeat)
             })
         } else return(dataHeat)
     })
-    
+
     # * switch to fast mode for large data -------------------------------------
     observe({
         dt <- getMainInput()
         if (
             nlevels(as.factor(dt$geneID)) > fastModeCutoff |
             nlevels(as.factor(dt$ncbiID)) > fastModeCutoff
-        ) 
+        )
             updateRadioButtons(
-                session, "plotMode", 
-                choices = list("Normal" = "normal", "Fast" = "fast"), 
+                session, "plotMode",
+                choices = list("Normal" = "normal", "Fast" = "fast"),
                 selected = "fast", inline = TRUE
             )
     })
@@ -2564,6 +2909,13 @@ shinyServer(function(input, output, session) {
     })
 
     # * render popup for selecting rank and return list of subset taxa ---------
+    observeEvent(input$taxonHighlightBrowse, {
+        showModal(taxaSelectModal(
+            "selectTaxonRankMain", "Select taxon/taxa of interest",
+            "applyMainTaxa", "Apply to main profile"
+        ))
+    })
+
     mainTaxaName <- callModule(
         selectTaxonRank,
         "selectTaxonRankMain",
@@ -2575,6 +2927,14 @@ shinyServer(function(input, output, session) {
     # * get list of taxa for highlighting --------------------------------------
     # output$taxonHighlight.ui <- renderUI({
     observe({
+        req(getMainInput())
+        req(v$doPlot)
+        if (rtCheck) {
+            checkpoint131 <- Sys.time()
+            print(paste(
+                "checkpoint131 - before render taxa hghlight", checkpoint131
+            ))
+        }
         filein <- input$mainInput
         if (
             input$demoData == "arthropoda" | input$demoData == "ampk-tor" |
@@ -2584,7 +2944,7 @@ shinyServer(function(input, output, session) {
         }
         choice <- inputTaxonName()
         out <- levels(factor(choice$fullName))
-        if (input$applyMainTaxa == TRUE) {
+        if (!is.null(input$applyMainTaxa) && input$applyMainTaxa == TRUE) {
             outSub <- mainTaxaName()
             updateSelectizeInput(
                 session, "taxonHighlight", server = TRUE,
@@ -2596,16 +2956,40 @@ shinyServer(function(input, output, session) {
                 choices = out
             )
         }
+        if (rtCheck) {
+            checkpoint132 <- Sys.time()
+            print(paste(
+                "checkpoint132 - render tax highlight done", checkpoint132,
+                " --- ",  checkpoint132 - checkpoint131
+            ))
+        }
     })
 
     # * get list of genes for highlighting -------------------------------------
     getAllGenes <- function() {
+        req(getMainInput())
+        req(v$doPlot)
         df <- getMainInput()
-        idNameDf <- unique(df[,c("geneID","geneName")])
-        idNameList <- setNames(idNameDf$geneID, idNameDf$geneName)
+        if (rtCheck) {
+            checkpoint141 <- Sys.time()
+            print(paste(
+                "checkpoint141 - before render gene highlight", checkpoint141
+            ))
+        }
+        idNameDf <- df %>% dplyr::select(geneID, geneName) %>% distinct()
+        idNameList <- setNames(
+            as.character(idNameDf$geneID), as.character(idNameDf$geneName)
+        )
+        if (rtCheck) {
+            checkpoint142 <- Sys.time()
+            print(paste(
+                "checkpoint142 - render gene highlight done", checkpoint142,
+                " --- ",  checkpoint142 - checkpoint141
+            ))
+        }
         return(idNameList)
     }
-    
+
     observe({
         out <- getAllGenes()
         if (!(is.null(input$geneHighlightFile))) {
@@ -2649,89 +3033,66 @@ shinyServer(function(input, output, session) {
 
     # * update plot size based on input ----------------------------------------
     observe({
+        req(getMainInput())
         longDataframe <- getMainInput()
+        if (rtCheck) {
+            checkpoint151 <- Sys.time()
+            print(paste("checkpoint151 - before update plot size", checkpoint151))
+        }
         req(longDataframe)
         req(input$endIndex)
+        req(input$plotMode)
         if (input$autoSizing & input$plotMode == "normal") {
             inputSuperTaxon <- inputTaxonName()
             nrTaxa <- nlevels(as.factor(inputSuperTaxon$fullName))
             nrGene <- input$endIndex
-            
+
             adaptedSize <- adaptPlotSize(
-                nrTaxa, nrGene, input$xAxis, input$dotZoom
+                nrTaxa, nrGene, input$xAxis, getInputOrDefault(input, "dotZoom", defaultPlotConfig)
             )
+            req(length(adaptedSize) > 0)
             h <- adaptedSize[1]
             hv <- adaptedSize[2]
             wv <- adaptedSize[3]
-            
             if (h <= 20) {
-                updateSelectInput(
-                    session, "mainLegend",
-                    label = "Legend position:",
-                    choices = list("Right" = "right",
-                                   "Left" = "left",
-                                   "Top" = "top",
-                                   "Bottom" = "bottom",
-                                   "Hide" = "none"),
-                    selected = "top"
-                )
-                updateNumericInput(session, "width", value = wv  + 50)
+                if (!is.null(input$superRankSelect) && input$superRankSelect == "") {
+                    updateSelectInput(
+                        session, "mainLegend", label = "Legend position:",
+                        choices = list("Right" = "right",
+                                       "Left" = "left",
+                                       "Top" = "top",
+                                       "Bottom" = "bottom",
+                                       "Hide" = "none"),
+                        selected = "top"
+                    )
+                } else {
+                    updateSelectInput(
+                        session, "mainLegend", label = "Legend position:",
+                        choices = list("Right" = "right",
+                                       "Left" = "left",
+                                       "Top" = "top",
+                                       "Bottom" = "bottom",
+                                       "Hide" = "none"),
+                        selected = "right"
+                    )
+                }
+                updateNumericInput(session, "width", value = min(20000, wv  + 50))
             } else if (h <= 30) {
-                updateNumericInput(session, "width", value = wv + 50)
+                updateNumericInput(session, "width", value = min(20000, wv + 50))
             } else {
-                updateNumericInput(session, "width", value = wv)
+                updateNumericInput(session, "width", value = min(20000, wv))
             }
-            updateNumericInput(session, "height", value = hv)
-            
-            
-            # if (nrTaxa < 10000 && nrGene < 10000) {
-            #     # adapte to axis type
-            #     if (input$xAxis == "taxa") {
-            #         h <- nrGene
-            #         w <- nrTaxa
-            #     } else {
-            #         w <- nrGene
-            #         h <- nrTaxa
-            #     }
-            #     # adapt to dot zoom factor
-            #     if (input$dotZoom < -0.5){
-            #         hv <- (200 + 12 * h) * (1 + input$dotZoom) + 500
-            #         wv <- (200 + 12 * w) * (1 + input$dotZoom) + 500
-            #     }  else if ((input$dotZoom < 0)) {
-            #         hv <- (200 + 12 * h) * (1 + input$dotZoom) + 200
-            #         wv <- (200 + 12 * w) * (1 + input$dotZoom) + 200
-            #     } else {
-            #         hv <- (200 + 12 * h) * (1 + input$dotZoom)
-            #         wv <- (200 + 12 * w) * (1 + input$dotZoom)
-            #     }
-            #     # minimum size
-            #     if (hv < 300) hv <- 300
-            #     if (wv < 300) wv <- 300
-            #     # update plot size based on number of genes/taxa
-            #     hv <- hv + 300
-            #     wv <- wv + 300
-            #     if (h <= 20) {
-            #         updateSelectInput(
-            #             session, "mainLegend",
-            #             label = "Legend position:",
-            #             choices = list("Right" = "right",
-            #                            "Left" = "left",
-            #                            "Top" = "top",
-            #                            "Bottom" = "bottom",
-            #                            "Hide" = "none"),
-            #             selected = "top"
-            #         )
-            #         updateNumericInput(session, "width", value = wv  + 50)
-            #     } else if (h <= 30) {
-            #         updateNumericInput(session, "width", value = wv + 50)
-            #     } else {
-            #         updateNumericInput(session, "width", value = wv)
-            #     }
-            #     updateNumericInput(session, "height", value = hv)
-            # }
+            updateNumericInput(session, "height", value = min(20000, hv))
+        }
+        if (rtCheck) {
+            checkpoint152 <- Sys.time()
+            print(paste(
+                "checkpoint152 - update plot size done", checkpoint152,
+                " --- ",  checkpoint152 - checkpoint151
+            ))
         }
     })
-    
+
     observe({
         if(!(is.null(input$plotMode))) {
             if (input$plotMode == "fast") {
@@ -2760,7 +3121,12 @@ shinyServer(function(input, output, session) {
     # * parameters for the main profile plot -----------------------------------
     getParameterInputMain <- reactive({
         input$updateBtn
-
+        if (rtCheck) {
+            checkpoint161 <- Sys.time()
+            print(paste(
+                "checkpoint161 - before get main plot para", checkpoint161
+            ))
+        }
         colorByGroup <- input$colorByGroup
         # get category colors
         catColors <- NULL
@@ -2774,72 +3140,79 @@ shinyServer(function(input, output, session) {
         } else colorByGroup == FALSE
         if (input$autoUpdate == TRUE) {
             inputPara <- list(
-                "xAxis" = input$xAxis,
-                "geneIdType" = input$geneIdType,
-                "var1ID" = input$var1ID,
-                "var2ID"  = input$var2ID,
-                "midVar1" = input$midVar1,
-                "midVar2" = input$midVar2,
-                "lowColorVar1" =  input$lowColorVar1,
-                "midColorVar1" =  input$midColorVar1,
-                "highColorVar1" = input$highColorVar1,
-                "lowColorVar2" = input$lowColorVar2,
-                "midColorVar2" =  input$midColorVar2,
-                "highColorVar2" = input$highColorVar2,
-                "paraColor" = input$paraColor,
-                "xSize" = input$xSize,
-                "ySize" = input$ySize,
-                "legendSize" = input$legendSize,
-                "mainLegend" = input$mainLegend,
-                "dotZoom" = input$dotZoom,
-                "xAngle" = input$xAngle,
-                "font" = input$font,
-                "guideline" = 0,
-                "width" = input$width,
-                "height" = input$height,
-                "colorByGroup" = colorByGroup,
-                "catColors" = catColors,
-                "colorByOrthoID" = input$colorByOrthoID,
-                "groupLabelSize" = input$groupLabelSize,
-                "groupLabelDist" = input$groupLabelDist,
-                "groupLabelAngle" = input$groupLabelAngle,
-                "colorVar" = input$colorVar
+                xAxis = input$xAxis,
+                geneIdType = input$geneIdType,
+                var1ID = input$var1ID,
+                var2ID = input$var2ID,
+                font = input$font,
+                guideline = 0,
+                width = input$width,
+                height = input$height,
+                colorByGroup = colorByGroup,
+                catColors = catColors,
+                colorByOrthoID = input$colorByOrthoID,
+                colorVar = input$colorVar,
+                midVar1 = getInputOrDefaultColor(input, "midVar1"),
+                midVar2 = getInputOrDefaultColor(input, "midVar2"),
+                lowColorVar1 = getInputOrDefaultColor(input, "lowColorVar1"),
+                midColorVar1 = getInputOrDefaultColor(input, "midColorVar1"),
+                highColorVar1 = getInputOrDefaultColor(input, "highColorVar1"),
+                lowColorVar2 = getInputOrDefaultColor(input, "lowColorVar2"),
+                midColorVar2 = getInputOrDefaultColor(input, "midColorVar2"),
+                highColorVar2 = getInputOrDefaultColor(input, "highColorVar2"),
+                paraColor = getInputOrDefaultColor(input, "paraColor"),
+                xSize = getInputOrDefault(input, "xSize", defaultPlotConfig),
+                ySize = getInputOrDefault(input, "ySize", defaultPlotConfig),
+                legendSize = getInputOrDefault(input, "legendSize", defaultPlotConfig),
+                mainLegend = getInputOrDefault(input, "legend", defaultPlotConfig),
+                dotZoom = getInputOrDefault(input, "dotZoom", defaultPlotConfig),
+                xAngle = getInputOrDefault(input, "xAngle", defaultPlotConfig),
+                groupLabelSize = getInputOrDefault(input, "groupLabelSize", defaultPlotConfig),
+                groupLabelDist = getInputOrDefault(input, "groupLabelDist", defaultPlotConfig),
+                groupLabelAngle = getInputOrDefault(input, "groupLabelAngle", defaultPlotConfig)
             )
         } else {
             inputPara <- isolate(
-                list(
-                    "xAxis" = input$xAxis,
-                    "geneIdType" = input$geneIdType,
-                    "var1ID" = input$var1ID,
-                    "var2ID"  = input$var2ID,
-                    "midVar1" = input$midVar1,
-                    "midVar2" = input$midVar2,
-                    "lowColorVar1" =  input$lowColorVar1,
-                    "midColorVar1" =  input$midColorVar1,
-                    "highColorVar1" = input$highColorVar1,
-                    "lowColorVar2" = input$lowColorVar2,
-                    "midColorVar2" =  input$midColorVar2,
-                    "highColorVar2" = input$highColorVar2,
-                    "paraColor" = input$paraColor,
-                    "font" = input$font,
-                    "xSize" = input$xSize,
-                    "ySize" = input$ySize,
-                    "legendSize" = input$legendSize,
-                    "mainLegend" = input$mainLegend,
-                    "dotZoom" = input$dotZoom,
-                    "xAngle" = input$xAngle,
-                    "guideline" = 0,
-                    "width" = input$width,
-                    "height" = input$height,
-                    "colorByGroup" = colorByGroup,
-                    "catColors" = catColors,
-                    "colorByOrthoID" = input$colorByOrthoID,
-                    "groupLabelSize" = input$groupLabelSize,
-                    "groupLabelDist" = input$groupLabelDist,
-                    "groupLabelAngle" = input$groupLabelAngle,
-                    "colorVar" = input$colorVar
+                inputPara <- list(
+                    xAxis = input$xAxis,
+                    geneIdType = input$geneIdType,
+                    var1ID = input$var1ID,
+                    var2ID = input$var2ID,
+                    font = input$font,
+                    guideline = 0,
+                    width = input$width,
+                    height = input$height,
+                    colorByGroup = colorByGroup,
+                    catColors = catColors,
+                    colorByOrthoID = input$colorByOrthoID,
+                    colorVar = input$colorVar,
+                    midVar1 = getInputOrDefaultColor(input, "midVar1"),
+                    midVar2 = getInputOrDefaultColor(input, "midVar2"),
+                    lowColorVar1 = getInputOrDefaultColor(input, "lowColorVar1"),
+                    midColorVar1 = getInputOrDefaultColor(input, "midColorVar1"),
+                    highColorVar1 = getInputOrDefaultColor(input, "highColorVar1"),
+                    lowColorVar2 = getInputOrDefaultColor(input, "lowColorVar2"),
+                    midColorVar2 = getInputOrDefaultColor(input, "midColorVar2"),
+                    highColorVar2 = getInputOrDefaultColor(input, "highColorVar2"),
+                    paraColor = getInputOrDefaultColor(input, "paraColor"),
+                    xSize = getInputOrDefault(input, "xSize", defaultPlotConfig),
+                    ySize = getInputOrDefault(input, "ySize", defaultPlotConfig),
+                    legendSize = getInputOrDefault(input, "legendSize", defaultPlotConfig),
+                    mainLegend = getInputOrDefault(input, "legend", defaultPlotConfig),
+                    dotZoom = getInputOrDefault(input, "dotZoom", defaultPlotConfig),
+                    xAngle = getInputOrDefault(input, "xAngle", defaultPlotConfig),
+                    groupLabelSize = getInputOrDefault(input, "groupLabelSize", defaultPlotConfig),
+                    groupLabelDist = getInputOrDefault(input, "groupLabelDist", defaultPlotConfig),
+                    groupLabelAngle = getInputOrDefault(input, "groupLabelAngle", defaultPlotConfig)
                 )
             )
+        }
+        if (rtCheck) {
+            checkpoint162 <- Sys.time()
+            print(paste(
+                "checkpoint162 - get plot main para done", checkpoint162,
+                " --- ",  checkpoint162 - checkpoint161
+            ))
         }
         return(inputPara)
     })
@@ -2865,8 +3238,8 @@ shinyServer(function(input, output, session) {
         clusteredDataHeat = clusteredDataHeat,
         applyCluster = reactive(input$applyCluster),
         parameters = getParameterInputMain,
-        inSeq = reactive(input$inSeq),
-        inTaxa = reactive(input$inTaxa),
+        inSeq = reactive(rv2$selectedSeq),
+        inTaxa = reactive(rv2$selectedTaxa),
         rankSelect = reactive(input$rankSelect),
         inSelect = reactive(input$inSelect),
         taxonHighlight = reactive(input$taxonHighlight),
@@ -2890,33 +3263,49 @@ shinyServer(function(input, output, session) {
     })
 
     # * get list of all sequence IDs for customized profile --------------------
+    if (!exists("rv2", inherits = TRUE))
+        rv2 <- reactiveValues(selectedSeq = NULL, selectedTaxa = NULL)
     observe({
         fileCustom <- input$customFile
         if (v$doPlot == FALSE) {
-            if (input$addGeneUmap == TRUE) {
-                umapGenes <- umapSelectedGenes()
-                if (nrow(umapGenes) > 0)
-                    return(updateSelectizeInput(
-                        session, "inSeq", server = TRUE, "", 
-                        unique(umapGenes$geneID), 
-                        selected = unique(umapGenes$geneID)
-                    ))
+            if (input$addGeneDimRed == TRUE) {
+                dimRedGenes <- dimRedSelectedGenes()
+                req(dimRedGenes)
+                if (nrow(dimRedGenes) > 0) {
+                    outAll <- unique(dimRedGenes$geneID)
+                    rv2$selectedSeq <- allOut
+                    if (length(outAll) <= 1000) {
+                        updateSelectizeInput(
+                            session, "inSeq", server = TRUE, "",
+                            choices = outAll, selected = outAll
+                        )
+                    } else {
+                        updateSelectizeInput(
+                            session, "inSeq", server = TRUE, "",
+                            choices = paste("all", length(outAll), "selected seqs"),
+                            selected = paste("all", length(outAll), "selected seqs")
+                        )
+                    }
+                }
+                return()
             }
         } else {
             idNameList <- getAllGenes()
-            outAll <- c(as.factor("all"), idNameList)
+            outAll <- c(setNames("all", "all"), idNameList)
             if (input$addGeneAgeCustomProfile == TRUE) {
                 outAll <- as.list(selectedgeneAge())
+                req(outAll)
                 outAll <- outAll[[1]]
             } else if (input$addClusterCustomProfile == TRUE) {
                 outAll <- as.list(brushedClusterGene())
             } else if (input$addCoreGeneCustomProfile == TRUE) {
-                outAll <- as.list(coreGeneDf())
+                outAll <- coreGeneDf()
             } else if (input$addGCGenesCustomProfile == TRUE) {
                 outAll <- as.list(candidateGenes())
-            } else if (input$addGeneUmap == TRUE) {
-                umapGenes <- umapSelectedGenes()
-                if (nrow(umapGenes) > 0) outAll <- unique(umapGenes$geneID)
+            } else if (input$addGeneDimRed == TRUE) {
+                req(dimRedSelectedGenes())
+                dimRedGenes <- dimRedSelectedGenes()
+                if (nrow(dimRedGenes) > 0) outAll <- unique(dimRedGenes$geneID)
             } else {
                 if (!is.null(fileCustom)) {
                     customList <- read.table(
@@ -2926,7 +3315,8 @@ shinyServer(function(input, output, session) {
                     outAll <- as.list(levels(customList$V1))
                 } else {
                     return(updateSelectizeInput(
-                        session, "inSeq", server = TRUE, "", outAll
+                        session, "inSeq", server = TRUE, "", outAll,
+                        selected = "all"
                     ))
                 }
             }
@@ -2936,14 +3326,40 @@ shinyServer(function(input, output, session) {
                     session, "inSeq", server = TRUE,"", outAll, selected = "all"
                 )
             } else {
-                updateSelectizeInput(
-                    session, "inSeq", server = TRUE, "", outAll, selected=outAll
-                )
+                if (length(outAll) <= 1000) {
+                    updateSelectizeInput(
+                        session, "inSeq", server = TRUE, "",
+                        outAll, selected=outAll
+                    )
+                } else {
+                    updateSelectizeInput(
+                        session, "inSeq", server = TRUE, "",
+                        choices = paste("all", length(outAll), "selected seqs"),
+                        selected = paste("all", length(outAll), "selected seqs")
+                    )
+                }
+                rv2$selectedSeq <- outAll
+            }
+        }
+    })
+
+    # If user made manual selection, keep rv2$selectedSeq in sync
+    observeEvent(input$inSeq, {
+        if (!is.null(input$inSeq) && length(input$inSeq) > 0) {
+            if (!grepl("selected seqs", input$inSeq[1])) {
+                rv2$selectedSeq <- input$inSeq
             }
         }
     })
 
     # * render popup for selecting rank and return list of subset taxa ---------
+    observeEvent(input$cusTaxa, {
+        showModal(taxaSelectModal(
+            "selectTaxonRank", "Select taxon/taxa of interest",
+            "applyCusTaxa", "Apply to customized profile"
+        ))
+    })
+
     cusTaxaName <- callModule(
         selectTaxonRank,
         "selectTaxonRank",
@@ -2961,30 +3377,87 @@ shinyServer(function(input, output, session) {
             filein <- 1
         } else filein <- input$mainInput
 
-        if (is.null(filein) & input$addSpecUmap != TRUE) 
+        if (is.null(filein) & input$addSpecDimRed != TRUE)
             return(selectInput("inTaxa", "", "all"))
         if (v$doPlot == FALSE) {
-            if (input$addSpecUmap == TRUE) {
-                umapTaxa <- umapSelectedTaxa()
-                if (is.null(umapTaxa))
+            if (input$addSpecDimRed == TRUE) {
+                dimRedTaxa <- dimRedSelectedTaxa()
+                if (is.null(dimRedTaxa))
                     return(selectInput("inTaxa", "", "all"))
-                if (nrow(umapTaxa) > 0) out <- unique(umapTaxa$`Taxon name`)
-                selectizeInput("inTaxa","",out, selected = out, multiple = TRUE)
+                if (nrow(dimRedTaxa) > 0) {
+                    out <- unique(dimRedTaxa$`Taxon name`)
+                    rv2$selectedTaxa <- out
+                    if (length(out) <= 1000) {
+                        return(
+                            selectizeInput(
+                                "inTaxa","",out, selected = out, multiple = TRUE
+                            )
+                        )
+                    } else {
+                        label_all <- paste("all", length(out), "selected taxa")
+                        return(
+                            selectizeInput(
+                                "inTaxa", "", label_all, selected = label_all
+                            )
+                        )
+                    }
+
+                }
             } else return(selectInput("inTaxa", "", "all"))
         } else {
             choice <- inputTaxonName()
             out <- c("all", as.list(levels(factor(choice$fullName))))
-            if (input$applyCusTaxa == TRUE) {
+            if (!is.null(input$applyCusTaxa) && input$applyCusTaxa == TRUE) {
                 out <- cusTaxaName()
-                selectizeInput("inTaxa","",out, selected = out, multiple = TRUE)
-            } else if (input$addSpecUmap == TRUE) {
-                umapTaxa <- umapSelectedTaxa()
-                if (is.null(umapTaxa))
+                rv2$selectedTaxa <- out
+                if (length(out) <= 1000) {
+                    return(
+                        selectizeInput(
+                            "inTaxa", "", out, selected = out, multiple = TRUE
+                        )
+                    )
+                } else {
+                    label_all <- paste("all", length(out), "selected taxa")
+                    return(
+                        selectizeInput(
+                            "inTaxa", "", label_all, selected = label_all
+                        )
+                    )
+                }
+            } else if (input$addSpecDimRed == TRUE) {
+                dimRedTaxa <- dimRedSelectedTaxa()
+                if (is.null(dimRedTaxa))
                     return(selectInput("inTaxa", "", "all"))
-                if (nrow(umapTaxa) > 0) out <- unique(umapTaxa$`Taxon name`)
-                selectizeInput("inTaxa","",out, selected = out, multiple = TRUE)
+                if (nrow(dimRedTaxa) > 0) {
+                    out <- unique(dimRedTaxa$`Taxon name`)
+                    rv2$selectedTaxa <- out
+                    if (length(out) <= 1000) {
+                        return(
+                            selectizeInput(
+                                "inTaxa", "", out, selected = out, multiple = TRUE
+                            )
+                        )
+                    } else {
+                        label_all <- paste("all", length(out), "selected taxa")
+                        return(
+                            selectizeInput(
+                                "inTaxa", "", label_all, selected = label_all
+                            )
+                        )
+                    }
+                }
             } else {
+                rv2$selectedTaxa <- out
                 selectizeInput("inTaxa","",out,selected = out[1], multiple=TRUE)
+            }
+        }
+    })
+
+    observeEvent(input$inTaxa, {
+        if (!is.null(input$inTaxa) && length(input$inTaxa) > 0) {
+            first_val <- input$inTaxa[1]
+            if (is.character(first_val) && !grepl("selected taxa", first_val, fixed = TRUE)) {
+                rv2$selectedTaxa <- input$inTaxa
             }
         }
     })
@@ -3018,8 +3491,8 @@ shinyServer(function(input, output, session) {
         req(input$inTaxa)
         req(input$inSeq)
         if (input$selectedAutoSizing) {
-            nrTaxa <- length(input$inTaxa)
-            nrGene <- length(input$inSeq)
+            nrTaxa <- length(rv2$selectedTaxa)
+            nrGene <- length(rv2$selectedSeq)
             if (nrTaxa < 10000 && nrGene < 10000) {
                 if ("all" %in% input$inTaxa) {
                     inputSuperTaxon <- inputTaxonName()
@@ -3037,15 +3510,16 @@ shinyServer(function(input, output, session) {
                     h <- nrTaxa
                 }
                 # adapt to dot zoom factor
-                if (input$dotZoomSelect < -0.5){
-                    hv <- (200 + 12 * h) * (1 + input$dotZoomSelect) + 500
-                    wv <- (200 + 12 * w) * (1 + input$dotZoomSelect) + 500
-                }  else if ((input$dotZoomSelect < 0)) {
-                    hv <- (200 + 12 * h) * (1 + input$dotZoomSelect) + 200
-                    wv <- (200 + 12 * w) * (1 + input$dotZoomSelect) + 200
+                dotZoomSelect <- getInputOrDefault(input, "dotZoom", defaultPlotConfig, suffix = "Select")
+                if (dotZoomSelect < -0.5){
+                    hv <- (200 + 12 * h) * (1 + dotZoomSelect) + 500
+                    wv <- (200 + 12 * w) * (1 + dotZoomSelect) + 500
+                }  else if ((dotZoomSelect < 0)) {
+                    hv <- (200 + 12 * h) * (1 + dotZoomSelect) + 200
+                    wv <- (200 + 12 * w) * (1 + dotZoomSelect) + 200
                 } else {
-                    hv <- (200 + 12 * h) * (1 + input$dotZoomSelect)
-                    wv <- (200 + 12 * w) * (1 + input$dotZoomSelect)
+                    hv <- (200 + 12 * h) * (1 + dotZoomSelect)
+                    wv <- (200 + 12 * w) * (1 + dotZoomSelect)
                 }
                 # minimum size
                 if (hv < 300) hv <- 300
@@ -3054,34 +3528,24 @@ shinyServer(function(input, output, session) {
                 hv <- hv + 300
                 wv <- wv + 300
                 if (h <= 20) {
-                    updateSelectInput(
-                        session, "selectedLegend",
-                        label = "Legend position:",
-                        choices = list("Right" = "right",
-                                       "Left" = "left",
-                                       "Top" = "top",
-                                       "Bottom" = "bottom",
-                                       "Hide" = "none"),
-                        selected = "top"
-                    )
                     updateNumericInput(
                         session,
-                        "selectedWidth", value = wv  + 50
+                        "selectedWidth", value = min(20000, wv  + 50)
                     )
                 } else if (h <= 30) {
                     updateNumericInput(
                         session,
-                        "selectedWidth", value = wv + 50
+                        "selectedWidth", value = min(20000, wv + 50)
                     )
                 } else {
                     updateNumericInput(
                         session,
-                        "selectedWidth", value = wv
+                        "selectedWidth", value = min(20000, wv)
                     )
                 }
                 updateNumericInput(
                     session,
-                    "selectedHeight", value = hv
+                    "selectedHeight", value = min(20000, hv)
                 )
             }
         }
@@ -3119,35 +3583,36 @@ shinyServer(function(input, output, session) {
 
         inputPara <- isolate(
             list(
-                "xAxis" = input$xAxisSelected,
-                "geneIdType" = input$geneIdType,
-                "var1ID" = input$var1ID,
-                "var2ID"  = input$var2ID,
-                "midVar1" = input$midVar1,
-                "midVar2" = input$midVar2,
-                "lowColorVar1" =  input$lowColorVar1,
-                "midColorVar1" =  input$midColorVar1,
-                "highColorVar1" = input$highColorVar1,
-                "lowColorVar2" = input$lowColorVar2,
-                "midColorVar2" =  input$midColorVar2,
-                "highColorVar2" = input$highColorVar2,
-                "paraColor" = input$paraColor,
-                "xSize" = input$xSizeSelect,
-                "ySize" = input$ySizeSelect,
-                "legendSize" = input$legendSizeSelect,
-                "mainLegend" = input$selectedLegend,
-                "dotZoom" = input$dotZoomSelect,
-                "xAngle" = input$xAngleSelect,
-                "font" = input$font,
-                "guideline" = 0,
-                "width" = input$selectedWidth,
-                "height" = input$selectedHeight,
-                "colorByGroup" = colorByGroup,
-                "catColors" = catColors,
-                "colorByOrthoID" = input$colorByOrthoID,
-                "groupLabelSize" = input$groupLabelSizeSelect,
-                "groupLabelDist" = input$groupLabelDistSelect,
-                "groupLabelAngle" = input$groupLabelAngleSelect
+                xAxis = input$xAxisSelected,
+                geneIdType = input$geneIdType,
+                var1ID = input$var1ID,
+                var2ID = input$var2ID,
+                font = input$font,
+                guideline = 0,
+                width = input$selectedWidth,
+                height = input$selectedHeight,
+                colorByGroup = colorByGroup,
+                catColors = catColors,
+                colorByOrthoID = input$colorByOrthoID,
+                colorVar = input$colorVar,
+                midVar1 = getInputOrDefaultColor(input, "midVar1"),
+                midVar2 = getInputOrDefaultColor(input, "midVar2"),
+                lowColorVar1 = getInputOrDefaultColor(input, "lowColorVar1"),
+                midColorVar1 = getInputOrDefaultColor(input, "midColorVar1"),
+                highColorVar1 = getInputOrDefaultColor(input, "highColorVar1"),
+                lowColorVar2 = getInputOrDefaultColor(input, "lowColorVar2"),
+                midColorVar2 = getInputOrDefaultColor(input, "midColorVar2"),
+                highColorVar2 = getInputOrDefaultColor(input, "highColorVar2"),
+                paraColor = getInputOrDefaultColor(input, "paraColor"),
+                xSize = getInputOrDefault(input, "xSize", defaultPlotConfig, suffix = "Select"),
+                ySize = getInputOrDefault(input, "ySize", defaultPlotConfig, suffix = "Select"),
+                legendSize = getInputOrDefault(input, "legendSize", defaultPlotConfig, suffix = "Select"),
+                mainLegend = getInputOrDefault(input, "legend", defaultPlotConfig, suffix = "Select"),
+                dotZoom = getInputOrDefault(input, "dotZoom", defaultPlotConfig, suffix = "Select"),
+                xAngle = getInputOrDefault(input, "xAngle", defaultPlotConfig, suffix = "Select"),
+                groupLabelSize = getInputOrDefault(input, "groupLabelSize", defaultPlotConfig, suffix = "Select"),
+                groupLabelDist = getInputOrDefault(input, "groupLabelDist", defaultPlotConfig, suffix = "Select"),
+                groupLabelAngle = getInputOrDefault(input, "groupLabelAngle", defaultPlotConfig, suffix = "Select")
             )
         )
         return(inputPara)
@@ -3160,8 +3625,8 @@ shinyServer(function(input, output, session) {
         clusteredDataHeat = clusteredDataHeat,
         applyCluster = reactive(input$applyCluster),
         parameters = getParameterInputCustomized,
-        inSeq = reactive(input$inSeq),
-        inTaxa = reactive(input$inTaxa),
+        inSeq = reactive(rv2$selectedSeq),
+        inTaxa = reactive(rv2$selectedTaxa),
         rankSelect = reactive(input$rankSelect),
         inSelect = reactive(input$inSelect),
         taxonHighlight = reactive("none"),
@@ -3173,37 +3638,48 @@ shinyServer(function(input, output, session) {
         mode = reactive(input$plotMode)
     )
 
-    # ========================= UMAP CLUSTERING PLOT ===========================
-    shinyjs::disable("addSpecUmap")
+    # ==================== DIMENSIONALITY REDUCTION PLOT =======================
+    shinyjs::disable("addSpecDimRed")
     observe({
-        if (input$addSpecUmap) shinyjs::disable("addGeneUmap")
-        else shinyjs::enable("addGeneUmap")
+        if (input$dimRedType == "genes") shinyjs::disable("addSpecDimRed")
+        else shinyjs::enable("addSpecDimRed")
     })
-    
+    observe({
+        if (input$addSpecDimRed) shinyjs::disable("addGeneDimRed")
+        else shinyjs::enable("addGeneDimRed")
+    })
+
     u <- reactiveValues(doCusPlot = FALSE)
-    observeEvent(input$plotUmap, {
-        u$doUmapPlot <- input$plotUmap
+    observeEvent(input$plotDimRed, {
+        u$doDimRedPlot <- input$plotDimRed
         filein <- input$mainInput
         if (
             input$mainInputType == "file" & is.null(filein) &
             input$demoData == "none"
         ) {
-            u$doUmapPlot <- FALSE
-            shinyBS::updateButton(session, "plotUmap", disabled = TRUE)
+            u$doDimRedPlot <- FALSE
+            shinyjs::disable("plotDimRed")
         }
+        updateActionButton(session, "plotDimRed", label = "Update plot")
     })
-    
-    # * toggle umapRank based on umapClusteringType genes or taax --------------
+
+    # * toggle dimRedRank based on dimRedType genes or taax --------------
     observe({
-        if (input$umapClusteringType == "genes") {
-            shinyjs::disable("umapRank")
+        if (input$dimRedType == "genes") {
+            shinyjs::disable("dimRedRank")
+            shinyjs::disable("dimRedGroupHigherRank")
+            shinyjs::disable("dimRedApplyChangeLables")
+            shinyjs::disable("dimRedResetLables")
             updateRadioButtons(
-                session, "umapGroupLabelsBy", choices = c("taxa"), inline = TRUE
+                session, "dimRedGroupLabelsBy", choices = c("taxa"), inline = TRUE
             )
         } else {
-            shinyjs::enable("umapRank")
+            shinyjs::enable("dimRedRank")
+            shinyjs::enable("dimRedGroupHigherRank")
+            shinyjs::enable("dimRedApplyChangeLables")
+            shinyjs::enable("dimRedResetLables")
             updateRadioButtons(
-                session, "umapGroupLabelsBy", choices = c("taxa", "genes"),
+                session, "dimRedGroupLabelsBy", choices = c("taxa", "genes"),
                 inline = TRUE
             )
         }
@@ -3219,60 +3695,70 @@ shinyServer(function(input, output, session) {
                 colnames(inputDf)[4], colnames(inputDf)[5], "Both"
             )
             updateSelectInput(
-                session, "umapFilterVar", choices = choiceList, selected="both"
+                session, "dimRedFilterVar", choices = choiceList, selected="both"
             )
         } else if (ncol(inputDf) == 4) {
             choiceList <- "var1"
             names(choiceList) <- colnames(inputDf)[4]
-            updateSelectInput(session, "umapFilterVar", choices = choiceList)
+            updateSelectInput(session, "dimRedFilterVar", choices = choiceList)
         } else if (ncol(inputDf) == 3) {
-            shinyjs::disable("umapFilterVar")
-            shinyjs::disable("umapCutoff")
-            shinyjs::disable("umapDataType")
+            shinyjs::disable("dimRedFilterVar")
+            shinyjs::disable("dimRedCutoff")
+            shinyjs::disable("dimRedDataType")
         }
     })
 
-    # * data for UMAP clustering -----------------------------------------------
-    umapData <- reactive({
+    # * data for DIM reduction clustering --------------------------------------
+    dimRedData <- reactive({
         req(getMainInput())
-        req(u$doUmapPlot)
+        req(u$doDimRedPlot)
         if(is.null(getMainInput())) stop("Input data is NULL!")
+
+        input$plotDimRed
+        dimRedParams <- isolate(list(
+            rank = input$dimRedRank,
+            type = input$dimRedType,
+            filterVar = input$dimRedFilterVar,
+            cutoff = input$dimRedCutoff,
+            groupLabelsBy = input$dimRedGroupLabelsBy
+        ))
+
         withProgress(
             message = "Preparing data for clustering...", value = 0.5, {
-                umapData <- prepareUmapData(
-                    getMainInput(), input$umapRank, input$umapClusteringType,
-                    getTaxDBpath(), input$umapFilterVar, input$umapCutoff,
-                    input$umapGroupLabelsBy
+                dimRedData <- prepareDimRedData(
+                    getMainInput(), dimRedParams$rank, dimRedParams$type,
+                    getTaxDBpath(), dimRedParams$filterVar, dimRedParams$cutoff,
+                    dimRedParams$groupLabelsBy
                 )
-                return(umapData)
+                return(dimRedData)
             }
         )
     })
-    
+
     # * read custom labels -----------------------------------------------------
     values <- reactiveValues(
         uploadLabelState = NULL
     )
-    
-    output$umapCustomLabel.ui <- renderUI({
-        if (input$umapClusteringType == "taxa")
-            fileInput("umapCustomLabel", "Add customized labels")
+
+    output$dimRedCustomLabel.ui <- renderUI({
+        if (input$dimRedType == "taxa")
+            fileInput("dimRedCustomLabel", "Add customized labels")
     })
-    
-    observeEvent(input$input$umapCustomLabel, {
+
+    observeEvent(input$dimRedCustomLabel, {
         values$uploadLabelState <- 'uploaded'
     })
-    
-    observeEvent(input$umapResetLables, {
+
+    observeEvent(input$dimRedResetLables, {
         values$uploadLabelState <- NULL
-        updateTextInput(session, "umapGroupHigherRank", value = "")
+        updateTextInput(session, "dimRedGroupHigherRank", value = "")
     })
-    
+
     getCustomLabels <- reactive({
         req(getMainInput())
-        if (is.null(values$uploadLabelState)) 
+        if (is.null(values$uploadLabelState))
             return(data.frame(ncbiID = c(), label = c()))
-        filein <- input$umapCustomLabel
+        filein <- input$dimRedCustomLabel
         if (!is.null(filein)) {
             customLabels <- read.table(
                 file = filein$datapath, header = FALSE, check.names = FALSE,
@@ -3283,24 +3769,27 @@ shinyServer(function(input, output, session) {
             return(customLabels[customLabels$ncbiID %in% mainInput$ncbiID,])
         } else return(data.frame(ncbiID = c(), label = c()))
     })
-    
+
     # * apply user-defined labels ----------------------------------------------
-    renameLabelsUmap <- reactive({
-        req(umapData())
-        input$umapApplyChangeLables
-        umapData <- umapData()
+    renameLabelsDimRed <- reactive({
+        req(dimRedData())
+        input$dimRedApplyChangeLables
+        dimRedData <- dimRedData()
         isolate({
-            if (input$umapClusteringType == "taxa") {
+            if (input$dimRedType == "taxa") {
                 # group labels into higher rank
-                higherRankTaxa <- unlist(strsplit(input$umapGroupHigherRank, ";"))
+                higherRankTaxa <- unlist(strsplit(input$dimRedGroupHigherRank, ";"))
                 higherRankTaxa <- trimws(higherRankTaxa)
                 if (length(higherRankTaxa) > 0) {
                     taxMatrix <- getTaxonomyMatrix(getTaxDBpath())
                     nameList <- getNameList(getTaxDBpath())
                     selDf <- data.frame(
-                        selRank = nameList$rank[nameList$fullName %in% higherRankTaxa],
-                        selID = nameList$ncbiID[nameList$fullName %in% higherRankTaxa],
-                        Label = nameList$fullName[nameList$fullName %in% higherRankTaxa]
+                        selRank = nameList$rank[
+                            nameList$fullName %in% higherRankTaxa],
+                        selID = nameList$ncbiID[
+                            nameList$fullName %in% higherRankTaxa],
+                        Label = nameList$fullName[
+                            nameList$fullName %in% higherRankTaxa]
                     )
                     selDf <- selDf[complete.cases(selDf),]
                     if (nrow(selDf) > 0) {
@@ -3311,7 +3800,7 @@ shinyServer(function(input, output, session) {
                                 if (!(selRank %in% mainTaxonomyRank()))
                                     selRank <- paste0("norank_", selID)
                                 selRank <- quo(!! sym(selRank))
-                                selTaxDf <- taxMatrix %>% 
+                                selTaxDf <- taxMatrix %>%
                                     filter((!!selRank) %in% selID) %>%
                                     select(abbrName, !!selRank)
                                 colnames(selTaxDf) <- c("ncbiID", "supertaxonID")
@@ -3319,29 +3808,31 @@ shinyServer(function(input, output, session) {
                                 return(selTaxDf)
                             }
                         )
-                        joinedSelTaxDf <- do.call(rbind, selTaxList) 
-                        joinedSelTaxDf <- joinedSelTaxDf %>% group_by(ncbiID) %>% 
+                        joinedSelTaxDf <- do.call(rbind, selTaxList)
+                        joinedSelTaxDf <- joinedSelTaxDf %>% group_by(ncbiID) %>%
                             filter(supertaxonID == min(supertaxonID))
-                        umapData <- left_join(umapData, joinedSelTaxDf, by = "ncbiID") %>% 
-                            mutate(Label = ifelse(!is.na(sel_label), sel_label, Label)) %>%
-                            select(-c(supertaxonID, sel_label))
+                        dimRedData <- left_join(
+                            dimRedData, joinedSelTaxDf, by = "ncbiID"
+                        ) %>% mutate(
+                            Label = ifelse(!is.na(sel_label), sel_label, Label)
+                        ) %>% dplyr::select(-c(supertaxonID, sel_label))
                     }
                 }
                 # apply custom labels (if provided)
                 customLabels <- getCustomLabels()
                 if(nrow(customLabels) > 0) {
-                    umapData$Label[
-                        umapData$ncbiID %in% customLabels$ncbiID
+                    dimRedData$Label[
+                        dimRedData$ncbiID %in% customLabels$ncbiID
                     ] <- customLabels$Label
                 }
             }
         })
-        return(umapData)
+        return(dimRedData)
     })
-    
-    output$umapGroupHigherRank.warning <- renderUI({
-        req(input$umapGroupHigherRank)
-        if (length(input$umapGroupHigherRank) > 0) {
+
+    output$dimRedGroupHigherRank.warning <- renderUI({
+        req(input$dimRedGroupHigherRank)
+        if (length(input$dimRedGroupHigherRank) > 0) {
             list(
                 em(paste("Click `Change labels` to apply. If you don't see your",
                          "specified labels, please check for typos!")),
@@ -3350,73 +3841,104 @@ shinyServer(function(input, output, session) {
         }
     })
 
-    # * UMAP clustered data ----------------------------------------------------
-    umapCluster <- reactive({
-        req(renameLabelsUmap())
+    # * do DIM reduction -------------------------------------------------------
+    dimRedCoord <- reactive({
+        req(renameLabelsDimRed())
+        input$plotDimRed
+        params <- isolate(list(
+            type = input$dimRedType,
+            dataType = input$dimRedDataType,
+            reductionTechnique = input$reductionTechnique,
+            tsneIter = input$tsneIter,
+            randomSeed = input$randomSeed,
+            dim = ifelse(input$dimRedPlotType == "ggplot", 2, 3)
+        ))
+        set.seed(params$randomSeed)
         withProgress(
-            message = "Performing UMAP clustering...", value = 0.5, {
-                umapData.umap <- umapClustering(
-                    renameLabelsUmap(), input$umapClusteringType, input$umapDataType
+            message = "Performing dimension reduction...", value = 0.5, {
+                dimRedData.coord <- dimReduction(renameLabelsDimRed(),
+                    params$type, params$dataType, params$randomSeed,
+                    params$reductionTechnique, params$dim, params$tsneIter
                 )
-                return(umapData.umap)
+                return(dimRedData.coord)
             }
         )
     })
 
-    # * generate list of UMAP labels -------------------------------------------
-    output$umapTaxa.ui <- renderUI({
-        req(renameLabelsUmap())
-        df <- groupLabelUmapData(renameLabelsUmap(), input$umapLabelNr)
-        list(
-            selectInput(
-                "excludeUmapTaxa", "Choose labels to hide", multiple = TRUE,
-                c(levels(as.factor(df$Label))), selected = NULL
-            ),
-            selectInput(
-                "highlightUmapTaxa", "Choose labels to highlight", multiple = TRUE,
-                c(levels(as.factor(df$Label))), selected = NULL
-            )
+    # * generate list of dimRed plot labels ------------------------------------
+    observe({
+        req(renameLabelsDimRed())
+        df <- groupLabelDimRedData(renameLabelsDimRed(), input$dimRedLabelNr)
+        allLabels <- levels(as.factor(df$Label))
+
+        selectedExcludeLabels <- readSingleColFile(input$excludeDimRedTaxaFile)
+        selectedHighlightLabels <- readSingleColFile(input$highlightDimRedTaxaFile)
+
+        updateSelectizeInput(
+            session, "excludeDimRedTaxa", "", server = TRUE, choices = allLabels,
+            selected = unique(selectedExcludeLabels[selectedExcludeLabels %in% allLabels])
+        )
+        updateSelectizeInput(
+            session, "highlightDimRedTaxa", "", server = TRUE,  choices = allLabels,
+            selected = unique(selectedHighlightLabels[selectedHighlightLabels %in% allLabels])
         )
     })
-    
-    # * update umapLabelNr based on the freq of genes/taxa ---------------------
+
+    # * update dimRedLabelNr based on the freq of genes/taxa -------------------
     observe({
-        req(umapData())
-        df <- umapData()
-        freqList <- sort(unique(umapData()$n))
+        req(dimRedData())
+        df <- dimRedData()
+        freqList <- sort(unique(dimRedData()$n))
         selectFreq <- tail(freqList, 5)[1]
         updateSliderInput(
-            session, "umapLabelNr", "Freq cutoff", min = freqList[1],
-            max = tail(freqList, 1), step = 1, 
+            session, "dimRedLabelNr", "Freq cutoff", min = freqList[1],
+            max = tail(freqList, 1), step = 1,
             value = c(selectFreq, tail(freqList, 1))
         )
     })
 
-    # * create UMAP plot -------------------------------------------------------
+    # * create DIM reduction plot ----------------------------------------------
+    observe({
+        if (input$dimRedPlotType == "plotly") {
+            updateSliderInput(
+                session, "dimRedPlot.dotzoom", "Dot size zooming",
+                min = 0, max = 100, step = 5, value = 0
+            )
+        } else {
+            updateSliderInput(
+                session, "dimRedPlot.dotzoom", "Dot size zooming",
+                min = -3, max = 10, step = 1, value = 0
+            )
+        }
+    })
     ranges <- reactiveValues(x = NULL, y = NULL)
 
-    umapPlotData <- reactive({
+    dimRedPlotData <- reactive({
         req(getMainInput())
         if(is.null(getMainInput())) stop("Input data is NULL!")
-        req(umapCluster())
-        req(renameLabelsUmap())
-        plotDf <- createUmapPlotData(
-            umapCluster(), renameLabelsUmap(), freqCutoff = input$umapLabelNr, 
-            excludeTaxa = input$excludeUmapTaxa
+        req(dimRedCoord())
+        req(renameLabelsDimRed())
+        plotDf <- createDimRedPlotData(
+            dimRedCoord(), renameLabelsDimRed(),
+            freqCutoff = input$dimRedLabelNr,
+            excludeTaxa = input$excludeDimRedTaxa,
+            currentNCBIinfo = currentNCBIinfo
         )
         return(plotDf)
     })
 
-    output$umapPlot <- renderPlot({
+    output$dimRedPlot <- renderPlot({
         req(getMainInput())
         if(is.null(getMainInput())) stop("Input data is NULL!")
         withProgress(
             message = "Plotting...", value = 0.5, {
-                g <- plotUmap(
-                    umapPlotData(), colorPalette = input$colorPalleteUmap,
-                    transparent = input$umapAlpha,
-                    textSize = input$umapPlot.textsize, font = input$font, 
-                    highlightTaxa = input$highlightUmapTaxa
+                g <- plotDimRed(
+                    dimRedPlotData(), legendPos = input$dimRedPlot.legend,
+                    colorPalette = input$colorPalleteDimRed,
+                    transparent = input$dimRedDotAlpha,
+                    textSize = input$dimRedPlot.textsize, font = input$font,
+                    highlightTaxa = input$highlightDimRedTaxa,
+                    dotZoom = input$dimRedPlot.dotzoom
                 )
                 g + coord_cartesian(
                     xlim = ranges$x, ylim = ranges$y, expand = TRUE
@@ -3425,29 +3947,62 @@ shinyServer(function(input, output, session) {
         )
     })
 
-    output$umapPlot.ui <- renderUI({
-        shinycssloaders::withSpinner(
-            plotOutput(
-                "umapPlot",
-                height = input$umapPlot.height,
-                width = input$umapPlot.width,
-                click = "umapClick",
-                dblclick = "umapdblClick",
-                brush = brushOpts(
-                    id = "umapBrush",
-                    delay = input$brushDelay,
-                    delayType = input$brushPolicy,
-                    direction = input$brushDir,
-                    resetOnNew = TRUE
+    output$dimRedPlotly <- renderPlotly({
+        req(getMainInput())
+        options(htmlwidgets.TOJSON_ARGS = NULL)
+        if(is.null(getMainInput())) stop("Input data is NULL!")
+        withProgress(
+            message = "Plotting...", value = 0.5, {
+                g <- plotDimRed3D(
+                    dimRedPlotData(), legendPos = input$dimRedPlot.legend,
+                    colorPalette = input$colorPalleteDimRed,
+                    transparent = input$dimRedDotAlpha,
+                    highlightTaxa = input$highlightDimRedTaxa,
+                    dotZoom = input$dimRedPlot.dotzoom
                 )
-            )
+                g <- event_register(g, "plotly_click")
+                return(g)
+            }
         )
     })
-    
+
+    output$dimRedPlot.ui <- renderUI({
+        if (input$dimRedPlotType == "ggplot") {
+            shinycssloaders::withSpinner(
+                plotOutput(
+                    "dimRedPlot",
+                    height = input$dimRedPlot.height,
+                    width = input$dimRedPlot.width,
+                    click = "dimRedClick",
+                    dblclick = "dimReddblClick",
+                    brush = brushOpts(
+                        id = "dimRedBrush",
+                        delay = input$brushDelay,
+                        delayType = input$brushPolicy,
+                        direction = input$brushDir,
+                        resetOnNew = TRUE
+                    ),
+                    hover = hoverOpts(
+                        id = "dimRedHover",
+                        nullOutside = FALSE
+                    )
+                )
+            )
+        } else {
+            shinycssloaders::withSpinner(
+                plotlyOutput(
+                    "dimRedPlotly",
+                    height = input$dimRedPlot.height,
+                    width = input$dimRedPlot.width
+                )
+            )
+        }
+    })
+
     # When a double-click happens, check if there's a brush on the plot
     # If so, zoom to the brush bounds; if not, reset the zoom.
-    observeEvent(input$umapdblClick, {
-        brush <- input$umapBrush
+    observeEvent(input$dimReddblClick, {
+        brush <- input$dimRedBrush
         if (!is.null(brush)) {
             ranges$x <- c(brush$xmin, brush$xmax)
             ranges$y <- c(brush$ymin, brush$ymax)
@@ -3458,160 +4013,233 @@ shinyServer(function(input, output, session) {
         }
     })
 
-    # * download UMAP plot & data ----------------------------------------------
-    output$umapDownloadPlot <- downloadHandler(
+    # * download DIM reduction plot & data -------------------------------------
+
+    # * download 2D plot -------------------------------------------------------
+    output$dimRedDownloadPlot <- downloadHandler(
         filename = function() {
-            c("umap.pdf")
+            paste("dimReduction2D_", Sys.Date(), ".svg", sep = "")
         },
         content = function(file) {
             ggsave(
                 file,
-                plot = plotUmap(
-                    umapPlotData(), colorPalette = input$colorPalleteUmap,
-                    transparent = input$umapAlpha, 
-                    textSize = input$umapPlot.textsize, font = input$font, 
-                    highlightTaxa = input$highlightUmapTaxa
+                plot = plotDimRed(
+                    dimRedPlotData(), legendPos = input$dimRedPlot.legend,
+                    colorPalette = input$colorPalleteDimRed,
+                    transparent = input$dimRedDotAlpha,
+                    textSize = input$dimRedPlot.textsize, font = input$font,
+                    highlightTaxa = input$highlightDimRedTaxa,
+                    dotZoom = input$dimRedPlot.dotzoom
                 ) + coord_cartesian(
                     xlim = ranges$x, ylim = ranges$y, expand = TRUE),
-                width = input$umapPlot.width * 0.056458333,
-                height = input$umapPlot.height * 0.056458333,
+                width = input$dimRedPlot.width * 0.056458333,
+                height = input$dimRedPlot.height * 0.056458333,
                 units = "cm", dpi = 300, device = "svg", limitsize = FALSE
             )
         }
     )
 
-    output$umapDownloadData <- downloadHandler(
+    # * download 3D plot -------------------------------------------------------
+    output$dimRedDownloadPlot3D <- downloadHandler(
         filename = function() {
-            c("umapData.RData")
+            paste("dimReduction3D_", Sys.Date(), ".html", sep = "")
         },
-        content = function(fileName) {
-            data4umap <- renameLabelsUmap()
-            umapClusteredData <- umapCluster()
-            umapPlotData <- umapPlotData()
-            save(data4umap, umapClusteredData, umapPlotData, file = fileName)
+        content = function(file) {
+            plot3d <- plotDimRed3D(
+                dimRedPlotData(), legendPos = input$dimRedPlot.legend,
+                colorPalette = input$colorPalleteDimRed,
+                transparent = input$dimRedDotAlpha,
+                highlightTaxa = input$highlightDimRedTaxa,
+                dotZoom = input$dimRedPlot.dotzoom
+            )
+            htmlwidgets::saveWidget(
+                widget = plot3d, file = file, selfcontained = TRUE
+            )
         }
     )
 
-    # * create brushed UMAP table ----------------------------------------------
-    brushedUmapData <- reactive({
-        # get list of selected gene(s)
-        if (is.null(input$umapBrush))
+    # * download DIM reduction data --------------------------------------------
+    output$dimRedDownloadData <- downloadHandler(
+        filename = function() {
+            c("dimRedData.RData")
+        },
+        content = function(fileName) {
+            data4dimRed <- renameLabelsDimRed()
+            dimRedCoord <- dimRedCoord()
+            dimRedPlotData <- dimRedPlotData()
+            save(data4dimRed, dimRedCoord, dimRedPlotData, file = fileName)
+        }
+    )
+
+    # * get selected data on DIM plot ------------------------------------------
+    # ** brushed DIM reduction table (2D plot) ---------------------------------
+    brushedDimRedData <- reactive({
+        if (is.null(input$dimRedBrush))
             return()
         else {
-            xmin <- input$umapBrush$xmin
-            xmax <- input$umapBrush$xmax
-            ymin <- input$umapBrush$ymin
-            ymax <- input$umapBrush$ymax
+            xmin <- input$dimRedBrush$xmin
+            xmax <- input$dimRedBrush$xmax
+            ymin <- input$dimRedBrush$ymin
+            ymax <- input$dimRedBrush$ymax
             return(
-                umapPlotData() %>%
+                dimRedPlotData() %>%
                     filter(X >= xmin & X <= xmax & Y >= ymin & Y <= ymax)
             )
         }
     })
 
-    output$umapTable.ui <- renderUI({
-        if (input$umapClusteringType == "taxa") {
+    # ** clicked DIM reduction table (3D plot) ---------------------------------
+    rv <- reactiveValues(clickedData = data.frame())
+    observeEvent(event_data("plotly_click"), {
+        click_data <- event_data("plotly_click")
+        if (!is.null(click_data)) {
+            clicked_df <- dimRedPlotData() %>% filter(
+                X == click_data$x, Y == click_data$y, Z == click_data$z
+            )
+            if (
+                length(rv$clickedData) == 0 ||
+                !(clicked_df[1,1] %in% rv$clickedData[,1])
+            ) {
+                rv$clickedData <- rbind(rv$clickedData, clicked_df)
+            }
+        }
+    })
+    observeEvent(input$clear, {
+        rv$clickedData <- data.frame()
+    })
+    observeEvent(input$plotDimRed, {
+        rv$clickedData <- data.frame()
+    })
+
+    # * create tables for selected points in DIM plot --------------------------
+    output$dimRedTable.ui <- renderUI({
+        if (input$dimRedType == "taxa") {
             list(
                 hr(),
                 h4("SELECTED TAXA"),
-                DT::dataTableOutput("umapSpec.table"),
+                DT::dataTableOutput("dimRedSpec.table"),
+                downloadButton(
+                    "downloadDimRedSpec.table", "Download table",
+                    class = "butDL"
+                ),
                 hr(),
                 h4("SELECTED SEED GENES"),
-                DT::dataTableOutput("umapSeed.table")
+                DT::dataTableOutput("dimRedGenes.table"),
+                downloadButton(
+                    "downloadDimRedGenes.table", "Download table",
+                    class = "butDL"
+                )
             )
         } else {
             list(
                 hr(),
                 h4("SELECTED SEED GENES"),
-                DT::dataTableOutput("umapSeed.table")
+                DT::dataTableOutput("dimRedGenes.table"),
+                downloadButton(
+                    "downloadDimRedGenes.table", "Download table",
+                    class = "butDL"
+                )
             )
         }
     })
 
-    umapSelectedTaxa <- reactive({
-        if (is.null(input$umapBrush$ymin)) {
-            shinyjs::disable("umapZoomIn")
-            shinyjs::disable("umapZoomOut")
-            shinyjs::disable("addSpecUmap")
+    # ** DIM reduction selected taxa table -------------------------------------
+    dimRedSelectedTaxa <- reactive({
+        if (is.null(input$dimRedBrush$ymin) & is.null(event_data("plotly_click"))) {
+            shinyjs::disable("addSpecDimRed")
             return()
         } else {
-            shinyjs::enable("umapZoomIn")
-            shinyjs::enable("umapZoomOut")
             lowestRank <- getLowestRank(getMainInput(), getTaxDBpath())
             # enable add taxa to cus. profile only when lowest rank is selected
             if (lowestRank == input$rankSelect) {
-                shinyjs::enable("addSpecUmap")
-            } else shinyjs::disable("addSpecUmap")
+                shinyjs::enable("addSpecDimRed")
+            } else shinyjs::disable("addSpecDimRed")
         }
-        df <- as.data.frame(brushedUmapData())
+
+        if(input$dimRedPlotType == "ggplot") {
+            df <- as.data.frame(brushedDimRedData())
+        } else df <- as.data.frame(rv$clickedData)
+
         if (nrow(df) > 0) {
-            specDf <- df %>% select(ncbiID, Label, Freq, n)
-            specDf$id <- as.numeric(gsub("ncbi","",specDf$ncbiID))
-            taxonNameDf <- PhyloProfile::id2name(specDf$id, currentNCBIinfo)
-            specDf <- left_join(
-                specDf, taxonNameDf %>% select(ncbiID, fullName),
-                by = c("id" = "ncbiID")
-            )
-            specDf <- specDf %>% select(ncbiID, fullName, Label, Freq, n)
+            specDf <- df %>% dplyr::select(ncbiID, fullName, Label, n, Freq)
             colnames(specDf) <- c(
-                "NCBI taxon ID", "Taxon name", "Label", "Number of genes", "Freq"
+                "NCBI taxon ID", "Taxon name", "Label", "Number of taxa", "Number of genes"
             )
             return(specDf)
         } else {
-            shinyjs::disable("addSpecUmap")
+            shinyjs::disable("addSpecDimRed")
             return()
         }
     })
 
-    output$umapSpec.table <- DT::renderDataTable(
+    output$dimRedSpec.table <- DT::renderDataTable(
         options = list(searching = TRUE, pageLength = 10
     ),{
-        umapSelectedTaxa()
+        dimRedSelectedTaxa()
     })
 
-    umapSelectedGenes <- reactive({
-        if (is.null(input$umapBrush$ymin)){
-            shinyjs::disable("addGeneUmap")
+    output$downloadDimRedSpec.table <- downloadHandler(
+        filename = function() {
+            c("dimRedSelectedTaxa.txt")
+        },
+        content = function(file) {
+            dataOut <- dimRedSelectedTaxa()
+            write.table(
+                dataOut, file, sep = "\t", row.names = FALSE, quote = FALSE
+            )
+        }
+    )
+
+    # ** DIM reduction selected genes table ------------------------------------
+    dimRedSelectedGenes <- reactive({
+        if (is.null(input$dimRedBrush$ymin) & is.null(event_data("plotly_click"))) {
+            shinyjs::disable("addGeneDimRed")
             return()
         } else {
             if (input$addClusterCustomProfile == FALSE
                 & input$addGeneAgeCustomProfile == FALSE
                 & input$addCoreGeneCustomProfile == FALSE
                 & input$addGCGenesCustomProfile == FALSE) {
-                shinyjs::enable("addGeneUmap")
+                shinyjs::enable("addGeneDimRed")
             } else {
-                shinyjs::disable("addGeneUmap")
+                shinyjs::disable("addGeneDimRed")
             }
         }
-        df <- as.data.frame(brushedUmapData())
+
+        if(input$dimRedPlotType == "ggplot") {
+            df <- as.data.frame(brushedDimRedData())
+        } else df <- as.data.frame(rv$clickedData)
+
         if (nrow(df) > 0) {
-            removeDf <- df %>% select(where(~ all(. == -1)))
+            removeDf <- df %>% dplyr::select(where(~ all(. == -1)))
+            subDf <- df %>% dplyr::select(-c(colnames(removeDf), Label, Freq, X, Y, Z, n))
+            if ("fullName" %in% colnames(subDf))
+                subDf <- subDf %>% dplyr::select(-c("fullName"))
             if ("ncbiID" %in% colnames(df)) {
                 meltedDf <- data.frame(melt(
-                    as.data.table(
-                        df %>% select(-c(colnames(removeDf), Label, Freq, X, Y, n))
-                    ),
+                    as.data.table(subDf),
                     id.vars = "ncbiID", variable.name = "geneID"
                 ))
-            } else 
+            } else {
                 meltedDf <- data.frame(melt(
-                    as.data.table(
-                        df %>% select(-c(colnames(removeDf), Label, Freq, X, Y, n))
-                    ),
+                    as.data.table(subDf),
                     id.vars = "geneID", variable.name = "ncbiID"
                 ))
+            }
             geneDf <- meltedDf %>% filter(value >= 0) %>%
                 select(geneID, ncbiID, value)
             geneDf$value <- round(geneDf$value,2)
+            # get total number of taxa
+            totalTaxa <- length(unique(geneDf$ncbiID))
             # rename "value" based on variable name(s)
             longDf <- getMainInput()
             if (ncol(longDf) >= 5) {
-                colnames(geneDf)[colnames(geneDf) == "value"] <- 
+                colnames(geneDf)[colnames(geneDf) == "value"] <-
                     paste("Mean of", input$var1ID, "&", input$var2ID)
             } else if (ncol(longDf) == 4) {
                 colnames(geneDf)[colnames(geneDf) == "value"] <- input$var1ID
             } else if (ncol(longDf) == 3) {
-                geneDf <- geneDf %>% select(geneID, ncbiID)
+                geneDf <- geneDf %>% dplyr::select(geneID, ncbiID)
             }
             # check gene IDs containing character "X" at the beginning
             geneDf$geneID <- as.character(geneDf$geneID)
@@ -3620,32 +4248,87 @@ shinyServer(function(input, output, session) {
                     geneDf$geneID <- sub("X","", geneDf$geneID, fixed = TRUE)
                 }
             }
-            return(geneDf)
+            # count number of taxa for each genes
+            joinedIDs <- paste(geneDf$geneID, geneDf$ncbiID)
+            t <- as.data.frame(do.call(rbind, strsplit(unique(joinedIDs), " ")))
+            geneCountDf <- data.frame(table(t$V1))
+            geneCountDf$Percentage <- round((geneCountDf$Freq / totalTaxa)*100, 1)
+            colnames(geneCountDf) <- c("geneID", "Taxa count", "% taxa")
+            geneDf <- merge(geneDf, geneCountDf, by = "geneID", all.x = TRUE)
+            # return(geneDf)
+            return(geneCountDf)
         } else {
-            shinyjs::disable("addGeneUmap")
+            shinyjs::disable("addGeneDimRed")
             return()
         }
     })
 
-    output$umapSeed.table <- DT::renderDataTable(
+    output$dimRedGenes.table <- DT::renderDataTable(
         options = list(searching = TRUE, pageLength = 10
     ),{
-        umapSelectedGenes()
+        dimRedSelectedGenes()
     })
 
-    # ** check if genes are added anywhere else to the customized profile ------
+    output$downloadDimRedGenes.table <- downloadHandler(
+        filename = function() {
+            c("dimRedSelectedGenes.txt")
+        },
+        content = function(file) {
+            dataOut <- dimRedSelectedGenes()
+            write.table(dataOut, file, sep = "\t", row.names = FALSE,
+                        quote = FALSE)
+        }
+    )
+
+    # * show DIM reduction hover info ------------------------------------------
+    dimRedHoverTaxa <- reactive({
+        req(input$dimRedHover)
+        x <- input$dimRedHover$x
+        y <- input$dimRedHover$y
+        hoveredDf <- nearPoints(
+            dimRedPlotData(), input$dimRedHover, xvar = "X", yvar = "Y"
+        ) %>% dplyr::select(ncbiID, Label, Freq, fullName)
+        if (nrow(hoveredDf) > 0) {
+            hoveredDf <- hoveredDf %>% dplyr::select(fullName, Freq)
+            colnames(hoveredDf) <- c("Taxon", "# genes")
+            return(hoveredDf)
+        } else return()
+    })
+
+    dimRedHoverGene <- reactive({
+        req(input$dimRedHover)
+        x <- input$dimRedHover$x
+        y <- input$dimRedHover$y
+        hoveredDf <- nearPoints(
+            dimRedPlotData(), input$dimRedHover, xvar = "X", yvar = "Y"
+        ) %>% dplyr::select(geneID, Freq)
+        if (nrow(hoveredDf) > 0) {
+            colnames(hoveredDf) <- c("Gene", "# taxa")
+            return(hoveredDf)
+        } else return()
+    })
+
+    output$dimRedHoverInfo <- renderTable({
+        if(!is.null(input$dimRedHover)){
+            if (input$dimRedType == "taxa") {
+                dimRedHoverTaxa()
+            } else dimRedHoverGene()
+        }
+    })
+
+    # * check if genes are added anywhere else to the customized profile -------
     observe({
         if (input$addClusterCustomProfile == TRUE
             | input$addGeneAgeCustomProfile == TRUE
             | input$addCoreGeneCustomProfile == TRUE
             | input$addGCGenesCustomProfile == TRUE) {
-            shinyjs::disable("addGeneUmap")
+            shinyjs::disable("addGeneDimRed")
         } else {
-            shinyjs::enable("addGeneUmap")
+            shinyjs::enable("addGeneDimRed")
         }
     })
 
-    output$addUmapCustomProfileCheck.ui <- renderUI({
+    output$addDimRedCustomProfileCheck.ui <- renderUI({
         if (input$addClusterCustomProfile == TRUE
             | input$addGeneAgeCustomProfile == TRUE
             | input$addCoreGeneCustomProfile == TRUE |
@@ -3730,6 +4413,29 @@ shinyServer(function(input, output, session) {
         }
     })
 
+    # * update highlight gene/taxa by selected point ---------------------------
+    observe({
+        input$highlightMain
+        # GET INFO BASED ON CURRENT TAB
+        if (input$tabs == "Main profile") {
+            shinyjs::enable("highlightMain")
+            # info contains groupID,orthoID,supertaxon,mVar1,%spec,var2
+            info <- isolate(mainpointInfo())
+        } else if (input$tabs == "Customized profile") {
+            shinyjs::disable("highlightMain")
+            info <- NULL
+        }
+        req(info)
+        if (length(info) > 1) {
+            updateSelectizeInput(
+                session, "geneHighlight", selected = info[[1]][1]
+            )
+            updateSelectizeInput(
+                session, "taxonHighlight", selected = info[[4]][1]
+            )
+        }
+    })
+
     # ============================= DETAILED PLOT ==============================
     # * data for detailed plot -------------------------------------------------
     detailPlotDt <- reactive({
@@ -3751,7 +4457,7 @@ shinyServer(function(input, output, session) {
             ### get info for present taxa in selected supertaxon (1)
             fullDf <- getFullData()
             ### filter data if needed
-            if  (input$detailedFilter == TRUE) {
+            if  (!is.null(input$detailedFilter) && input$detailedFilter == TRUE) {
                 fullDf <- filteredDataHeat()
                 if (info[[4]] == inSelect) {
                     fullDf <- fullDf[
@@ -3796,7 +4502,7 @@ shinyServer(function(input, output, session) {
             joinedDf$var2[is.na(joinedDf$orthoID)] <- NA
 
             # remove NA orthologs if required
-            if (input$detailedRemoveNA == TRUE) {
+            if (!is.null(input$detailedRemoveNA) && input$detailedRemoveNA == TRUE) {
                 joinedDf <- joinedDf[!is.na(joinedDf$orthoID), ]
             }
 
@@ -3806,6 +4512,10 @@ shinyServer(function(input, output, session) {
     })
 
     # * render detailed plot ---------------------------------------------------
+    observeEvent(input$detailedBtn, {
+        showModal(detailedPlotModal())
+    })
+
     pointInfoDetail <- callModule(
         createDetailedPlot, "detailedPlot",
         data = detailPlotDt,
@@ -3819,16 +4529,16 @@ shinyServer(function(input, output, session) {
     # * render database links --------------------------------------------------
     parseProId <- function(protId, separator, seqIdFormat) {
         tmp <- ""
-        if (separator == 1) {
+        if (separator == "|") {
             if (grepl("\\|", protId))
                 tmp <- as.list(strsplit(protId, "\\|")[[1]])
-        } else if (separator == 2) {
+        } else if (separator == "@") {
             if (grepl("@", protId))
                 tmp <- as.list(strsplit(protId, "@")[[1]])
-        } else if (separator == 3) {
+        } else if (separator == "#") {
             if (grepl("#", protId))
                 tmp <- as.list(strsplit(protId, "#")[[1]])
-        } else if (separator == 4) {
+        } else if (separator == ";") {
             if (grepl(";", protId))
                 tmp <- as.list(strsplit(protId, ";")[[1]])
         }
@@ -3852,12 +4562,18 @@ shinyServer(function(input, output, session) {
     output$dbLink.ui <- renderUI({
         info <- pointInfoDetail() # info = seedID, orthoID, var1, var2, ncbiID
         req(info)
-        linkText <- ""
-        # get seed ID
-        seedId <- toString(info[1])
+
+        # ensure inputs exist (with fallback defaults)
+        sep <- if (!is.null(input$separator)) input$separator else "|"
+        fmt <- if (!is.null(input$seqIdFormat)) input$seqIdFormat else 1
+
         separators <- c("|", "@", "#", ";")
+        linkText <- ""
+
+        # ---- get seed ID ----
+        seedId <- toString(info[1])
         if (grepl(paste(separators, collapse = "|"), seedId)) {
-            seedId <- parseProId(seedId, input$separator, input$seqIdFormat)
+            seedId <- parseProId(seedId, sep, fmt)
         }
         if (length(seedId) > 0) {
             if (input$seedSource == "ncbi") {
@@ -3865,15 +4581,16 @@ shinyServer(function(input, output, session) {
             } else if (input$seedSource == "uniprot") {
                 linkText <- paste0(linkText, createDBlink(seedId, "UniProt"))
             } else if (input$seedSource == "orthodb") {
-                linkText <- paste0(linkText, createDBlink(seedId, "OrthoDB", input$orthodbSeedVer))
+                linkText <- paste0(linkText, createDBlink(seedId, "OrthoDB", "", input$orthodbSeedVer))
             } else if (input$seedSource == "oma") {
                 linkText <- paste0(linkText, createDBlink(seedId, "OMA"))
             }
         }
-        # get ortho ID
+
+        # ---- get ortho ID ----
         protId <- toString(info[2])
         if (grepl(paste(separators, collapse = "|"), protId)) {
-            protId <- parseProId(protId, input$separator, input$seqIdFormat)
+            protId <- parseProId(protId, sep, fmt)
         }
         if (length(protId) > 0) {
             if (input$orthoSource == "ncbi") {
@@ -3881,13 +4598,15 @@ shinyServer(function(input, output, session) {
             } else if (input$orthoSource == "uniprot") {
                 linkText <- paste0(linkText, createDBlink(protId, "UniProt"))
             } else if (input$orthoSource == "orthodb") {
-                linkText <- paste0(linkText,createDBlink(protId, "OrthoDB", "gene", input$orthodbOrthoVer))
+                linkText <- paste0(linkText, createDBlink(protId, "OrthoDB", "gene", input$orthodbOrthoVer))
             } else if (input$orthoSource == "oma") {
                 linkText <- paste0(linkText, createDBlink(protId, "OMA", "gene"))
             }
         }
-        # get taxon ID
+
+        # ---- get taxon ID ----
         taxId <- gsub("ncbi", "", info[5])
+        if (taxId == 237631) taxId <- 5270 # Ustilago maydis
         taxHierarchy <- PhyloProfile:::getTaxHierarchy(taxId, currentNCBIinfo)
         taxUrls <- paste(taxHierarchy[[1]]$link, collapse = ", ")
         taxUrls <- gsub("<p>", "", taxUrls)
@@ -3896,7 +4615,7 @@ shinyServer(function(input, output, session) {
             linkText, "<p><strong>NCBI taxonomy: </strong>", taxUrls, "</p>"
         )
 
-        # render links
+        # ---- disclaimer ----
         linkText <- paste0(
             linkText,
             "<p><em><strong>Disclaimer:</strong> ",
@@ -3907,8 +4626,10 @@ shinyServer(function(input, output, session) {
             "#wrong-info-from-public-databases\" ",
             "target=\"_blank\">FAQ</a>)</em></p>"
         )
+
         HTML(linkText)
     })
+
 
     # * render FASTA sequence --------------------------------------------------
     output$fasta <- renderText({
@@ -3920,7 +4641,7 @@ shinyServer(function(input, output, session) {
 
         if (input$demoData == "none") {
             filein <- input$mainInput
-            inputType <- checkInputValidity(filein$datapath)
+            inputType <- inputType()
             # get fata from oma
             if (inputType == "oma") {
                 fastaOut <- getSelectedFastaOma(finalOmaDf(), seqID)
@@ -3932,6 +4653,7 @@ shinyServer(function(input, output, session) {
                     seqIDMod, file = filein$datapath
                 )
             } else {
+                req(input$inputType)
                 # get from concaternated file
                 if (input$inputType == "Concatenated fasta file") {
                     fastain <- input$concatFasta
@@ -3964,6 +4686,10 @@ shinyServer(function(input, output, session) {
 
     # ======================== FEATURE ARCHITECTURE PLOT =======================
     # * check if seed and orthoID are specified and get domain file/path -------
+    observeEvent(input$doDomainPlot, {
+        showModal(archiPlotModal())
+    })
+
     observe({
         infoTmp <- c()
         if (input$tabs == "Main profile") {
@@ -3999,55 +4725,49 @@ shinyServer(function(input, output, session) {
             info <- c(infoTmp[[1]], as.character(infoTmp[[2]]))
         } else {
             # else, get info from detailed plot
-            shinyBS::updateButton(session, "doDomainPlotMain", disabled = TRUE)
+            shinyjs::disable("doDomainPlotMain")
             if (!is.null(pointInfoDetail())) {
                 info <- pointInfoDetail() # info = seedID, orthoID, var1
             }
         }
 
         if (is.null(info)) {
-            shinyBS::updateButton(session, "doDomainPlot", disabled = TRUE)
-            shinyBS::updateButton(session, "doDomainPlotMain", disabled = TRUE)
+            shinyjs::disable("doDomainPlot")
+            shinyjs::disable("doDomainPlotMain")
             return("noSelectHit")
         } else {
             if (
                 input$demoData == "arthropoda" | input$demoData == "ampk-tor" |
                 input$demoData == "preCalcDt"
             ) {
-                shinyBS::updateButton(session, "doDomainPlot", disabled = FALSE)
+                shinyjs::enable("doDomainPlot")
                 if (lowestRank == input$rankSelect || infoTmp[[8]][1] == 1)
-                    shinyBS::updateButton(session, "doDomainPlotMain", disabled = FALSE)
+                    shinyjs::enable("doDomainPlotMain")
                 else
-                    shinyBS::updateButton(session, "doDomainPlotMain", disabled = TRUE)
+                    shinyjs::disable("doDomainPlotMain")
             } else {
                 if (
                     input$mainInputType == "file" &
-                    checkInputValidity(input$mainInput$datapath) == "oma"
+                    inputType() == "oma"
                 ) {
-                    shinyBS::updateButton(session, "doDomainPlot", disabled = FALSE)
+                    shinyjs::enable("doDomainPlot")
                     if (lowestRank == input$rankSelect || infoTmp[[8]][1] == 1)
-                        shinyBS::updateButton(session, "doDomainPlotMain", disabled = FALSE)
+                        shinyjs::enable("doDomainPlotMain")
                     else
-                        shinyBS::updateButton(session, "doDomainPlotMain", disabled = TRUE)
+                        shinyjs::disable("doDomainPlotMain")
                 } else {
                     if (input$annoLocation == "from file") {
                         inputDomain <- input$fileDomainInput
                         if (is.null(inputDomain)) {
-                            shinyBS::updateButton(
-                                session, "doDomainPlot", disabled = TRUE
-                            )
-                            shinyBS::updateButton(
-                                session, "doDomainPlotMain", disabled = TRUE
-                            )
+                            shinyjs::disable("doDomainPlot")
+                            shinyjs::disable("doDomainPlotMain")
                             return("noFileInput")
                         } else {
-                            shinyBS::updateButton(
-                                session, "doDomainPlot", disabled = FALSE
-                            )
+                            shinyjs::enable("doDomainPlot")
                             if (lowestRank == input$rankSelect || infoTmp[[8]][1] == 1)
-                                shinyBS::updateButton(session, "doDomainPlotMain", disabled = FALSE)
+                                shinyjs::enable("doDomainPlotMain")
                             else
-                                shinyBS::updateButton(session, "doDomainPlotMain", disabled = TRUE)
+                                shinyjs::disable("doDomainPlotMain")
                         }
                     } else {
                         domainDf <- parseDomainInput(
@@ -4056,30 +4776,22 @@ shinyServer(function(input, output, session) {
                         if (length(domainDf) == 1) {
                             if (domainDf == "noSelectHit" |
                                 domainDf == "noFileInFolder") {
-                                shinyBS::updateButton(
-                                    session, "doDomainPlot", disabled = TRUE
-                                )
-                                shinyBS::updateButton(
-                                    session, "doDomainPlotMain", disabled = TRUE
-                                )
+                                shinyjs::disable("doDomainPlot")
+                                shinyjs::disable("doDomainPlotMain")
                                 return(domainDf)
                             } else {
-                                shinyBS::updateButton(
-                                    session, "doDomainPlot", disabled = FALSE
-                                )
+                                shinyjs::enable("doDomainPlot")
                                 if (lowestRank == input$rankSelect || infoTmp[[8]][1] == 1)
-                                    shinyBS::updateButton(session, "doDomainPlotMain", disabled = FALSE)
+                                    shinyjs::enable("doDomainPlotMain")
                                 else
-                                    shinyBS::updateButton(session, "doDomainPlotMain", disabled = TRUE)
+                                    shinyjs::disable("doDomainPlotMain")
                             }
                         } else {
-                            shinyBS::updateButton(
-                                session, "doDomainPlot", disabled = FALSE
-                            )
+                            shinyjs::enable("doDomainPlot")
                             if (lowestRank == input$rankSelect || infoTmp[[8]][1] == 1)
-                                shinyBS::updateButton(session, "doDomainPlotMain", disabled = FALSE)
+                                shinyjs::enable("doDomainPlotMain")
                             else
-                                shinyBS::updateButton(session, "doDomainPlotMain", disabled = TRUE)
+                                shinyjs::disable("doDomainPlotMain")
                         }
                     }
                 }
@@ -4094,6 +4806,7 @@ shinyServer(function(input, output, session) {
         if (length(fileDomain) == 1) {
             if (fileDomain == "noFileInput") {
                 em("Domain file not provided!!")
+                shinyjs::disable("doDomainPlot")
             } else if (fileDomain == "noFileInFolder") {
                 msg <- paste0(
                     "<p><em>Domain file not found!! </em></p>
@@ -4104,31 +4817,30 @@ shinyServer(function(input, output, session) {
                 <strong>architecture</strong>.</em></p>"
                 )
                 HTML(msg)
+                shinyjs::disable("doDomainPlot")
             } else if (fileDomain == "noSelectHit") {
                 em("Please select one ortholog sequence!!")
+                shinyjs::disable("doDomainPlot")
             }
         }
     })
 
     # * render domain plot -----------------------------------------------------
-    observeEvent(input$doDomainPlot, {
-        callModule(
-            createArchitecturePlot, "archiPlot",
-            pointInfo = getDomainFile,
-            domainInfo = getDomainInformation,
-            currentNCBIinfo = reactive(currentNCBIinfo),
-            font = reactive(input$font)
-        )
-    })
-    observeEvent(input$doDomainPlotMain, {
-        callModule(
-            createArchitecturePlot, "archiPlotMain",
-            pointInfo = getDomainFile,
-            domainInfo = getDomainInformation,
-            currentNCBIinfo = reactive(currentNCBIinfo),
-            font = reactive(input$font)
-        )
-    })
+    renderArchiModal <- function(triggerId, moduleId) {
+        observeEvent(input[[triggerId]], {
+            showModal(archiPlotModal(moduleId))
+
+            callModule(
+                createArchitecturePlot, moduleId,
+                pointInfo = getDomainFile,
+                domainInfo = getDomainInformation,
+                currentNCBIinfo = reactive(currentNCBIinfo),
+                font = reactive(input$font)
+            )
+        })
+    }
+    renderArchiModal("doDomainPlot", "archiPlot")
+    renderArchiModal("doDomainPlotMain", "archiPlotMain")
 
     # ======================== FILTERED DATA DOWNLOADING =======================
 
@@ -4139,7 +4851,7 @@ shinyServer(function(input, output, session) {
 
         if (input$demoData == "none") {
             filein <- input$mainInput
-            inputType <- checkInputValidity(filein$datapath)
+            inputType <- inputType()
             # get fata from oma
             if (inputType == "oma") {
                 allOmaDf <- finalOmaDf()
@@ -4209,7 +4921,7 @@ shinyServer(function(input, output, session) {
 
         if (input$demoData == "none") {
             filein <- input$mainInput
-            inputType <- checkInputValidity(filein$datapath)
+            inputType <- inputType()
             # get fata from oma
             if (inputType == "oma") {
                 allOmaDf <- finalOmaDf()
@@ -4264,8 +4976,8 @@ shinyServer(function(input, output, session) {
         "filteredCustomizedDownload",
         data = downloadData,
         fasta = customizedFastaDownload,
-        inSeq = reactive(input$inSeq),
-        inTaxa = reactive(input$inTaxa)
+        inSeq = reactive(rv2$selectedSeq),
+        inTaxa = reactive(rv2$selectedTaxa)
     )
 
     # ======================== PROCESSED DATA DOWNLOADING ======================
@@ -4279,10 +4991,9 @@ shinyServer(function(input, output, session) {
         )
 
         if (input$tabs == "Processed data") {
-            shinyBS::createAlert(
-                session, "descDownloadProcessedDataUI",
-                "descDownloadProcessedData", content = desc, append = FALSE
-            )
+            output$descDownloadProcessedDataUI <- renderUI({
+                div(class = "alert alert-info", desc)
+            })
         }
     })
 
@@ -4337,7 +5048,7 @@ shinyServer(function(input, output, session) {
     observeEvent(input$doDownloadProcData, {
         req(length(getProcDataPath()) > 0)
         withCallingHandlers({
-            shinyjs::html("downloadProcDataStatus", "")
+            shinyjs::html("downloadProcDataStatus", "<p>Please wait...</p>")
             downloadProcData()
         },
         message = function(m) {
@@ -4361,10 +5072,9 @@ shinyServer(function(input, output, session) {
         )
 
         if (input$tabs == "Export plot settings") {
-            shinyBS::createAlert(
-                session, "descExportSettingUI", "descExportSetting",
-                content = desc, append = FALSE
-            )
+            output$descExportSettingUI <- renderUI({
+                div(class = "alert alert-info", HTML(desc))
+            })
         }
     })
 
@@ -4476,16 +5186,14 @@ shinyServer(function(input, output, session) {
     # * PROFILE CLUSTERING =====================================================
     # ** description for profile clustering function ---------------------------
     observe({
-        desc = paste(
-            "Cluster genes according to the distance of their phylogenetic
-            profiles."
-        )
+        desc <- "Cluster genes according to the distance of their phylogenetic profiles."
 
-        if (input$tabs == "Profiles clustering") {
-            shinyBS::createAlert(
-                session, "descClusteringUI", "descClustering",
-                content = desc, append = FALSE
-            )
+        if (input$tabs == "profile_clustering") {
+            output$descClusteringUI <- renderUI({
+                div(class = "alert alert-info", desc)
+            })
+        } else {
+            output$descClusteringUI <- renderUI(NULL)
         }
     })
 
@@ -4494,7 +5202,7 @@ shinyServer(function(input, output, session) {
         if (input$addGeneAgeCustomProfile == TRUE
             | input$addCoreGeneCustomProfile == TRUE
             | input$addGCGenesCustomProfile == TRUE
-            | input$addGeneUmap == TRUE) {
+            | input$addGeneDimRed == TRUE) {
             shinyjs::disable("addClusterCustomProfile")
         } else {
             shinyjs::enable("addClusterCustomProfile")
@@ -4505,12 +5213,12 @@ shinyServer(function(input, output, session) {
         if (input$addGeneAgeCustomProfile == TRUE
             | input$addCoreGeneCustomProfile == TRUE
             | input$addGCGenesCustomProfile == TRUE
-            | input$addGeneUmap == TRUE) {
+            | input$addGeneDimRed == TRUE) {
             HTML('<p><em>(Uncheck "Add to Customized profile" check box in
                  <strong>Gene age estimation</strong> or
                  <strong>Core genes finding</strong> or
                  <strong>Group comparison</strong> or
-                 <strong>UMAP clustering (Selected genes)</strong>
+                 <strong>Dimension reduction (Selected genes)</strong>
                  &nbsp;to enable this function)</em></p>')
         }
     })
@@ -4581,6 +5289,13 @@ shinyServer(function(input, output, session) {
 
     # ** create profiles for calculating distance matrix -----------------------
     getProfiles <- reactive({
+        if (rtCheck) {
+            checkpointc101 <- Sys.time()
+            print(paste(
+                "checkpoint-C101 - before get profiles for clustering",
+                checkpointc101
+            ))
+        }
         withProgress(message = 'Getting data for cluster...', value = 0.5, {
             req(dataHeat())
             if (is.null(input$profileType)) profileType <- i_profileType
@@ -4588,11 +5303,22 @@ shinyServer(function(input, output, session) {
             if (input$keepOrder == TRUE) {
                 fullDt <- getFullData()
                 tmpDf <- calcPresSpec(fullDt, getCountTaxa())
-                fullDt <- Reduce(
-                    function(x, y)
-                        merge(x, y, by = c("geneID", "supertaxon"), all.x=TRUE),
-                    list(fullDt, tmpDf))
-                fullDt$orthoID[fullDt$presSpec == 0] <- NA
+                fullDt <- fullDt %>%
+                    left_join(tmpDf, by = c("geneID", "supertaxon")) %>%
+                    mutate(orthoID = ifelse(
+                        presSpec == 0, NA, as.character(orthoID)
+                    )) %>% mutate(
+                        orthoID = factor(
+                            orthoID, levels=unique(as.character(fullDt$orthoID))
+                        )
+                    )
+                if (rtCheck) {
+                    checkpointc101a <- Sys.time()
+                    print(paste(
+                        "checkpoint-C101a - start get profiles for clustering",
+                        checkpointc101a," --- ",checkpointc101a - checkpointc101
+                    ))
+                }
                 profiles <- getDataClustering(
                     fullDt,
                     profileType,
@@ -4601,6 +5327,13 @@ shinyServer(function(input, output, session) {
                 )
             }
             else {
+                if (rtCheck) {
+                    checkpointc101a <- Sys.time()
+                    print(paste(
+                        "checkpoint-C101b - start get profiles for clustering",
+                        checkpointc101a," --- ",checkpointc101a - checkpointc101
+                    ))
+                }
                 profiles <- getDataClustering(
                     dataHeat(),
                     profileType,
@@ -4608,18 +5341,38 @@ shinyServer(function(input, output, session) {
                     input$var2AggregateBy
                 )
             }
+            if (rtCheck) {
+                checkpointc102 <- Sys.time()
+                print(paste(
+                    "checkpoint-C102 - get profiles for clustering done",
+                    checkpointc102, " --- ",  checkpointc102 - checkpointc101a
+                ))
+            }
             return(profiles)
         })
     })
 
     # ** calculate distance matrix ---------------------------------------------
     getDistanceMatrixProfiles <- reactive({
+        if (rtCheck) {
+            checkpointc201 <- Sys.time()
+            print(paste(
+                "checkpoint-C201 - before calculate dist matrix", checkpointc201
+            ))
+        }
         withProgress(message = 'Calculating distance matrix...', value = 0.5, {
             req(getProfiles())
             if (is.null(input$distMethod))
                 distMethod <- i_distMethod
             else distMethod <- input$distMethod
             distanceMatrix <- getDistanceMatrix(getProfiles(), distMethod)
+            if (rtCheck) {
+                checkpointc202 <- Sys.time()
+                print(paste(
+                    "checkpoint-C202 - calculate dist matrix done",
+                    checkpointc202, " --- ",  checkpointc202 - checkpointc201
+                ))
+            }
             return(distanceMatrix)
         })
     })
@@ -4640,12 +5393,10 @@ shinyServer(function(input, output, session) {
             "Plot the distributions of the values incurred by the integrated
             information layers."
         )
-
-        if (input$tabs == "Distribution analysis") {
-            shinyBS::createAlert(
-                session, "descDistributionUI", "descDistribution",
-                content = desc, append = FALSE
-            )
+        if (input$tabs == "distribution_analysis") {
+            output$descDistributionUI <- renderUI({
+                div(class = "alert alert-info", desc)
+            })
         }
     })
 
@@ -4660,7 +5411,7 @@ shinyServer(function(input, output, session) {
         } else {
             varList <- as.list(c(input$var1ID, input$var2ID, "% present taxa"))
         }
-
+        varList <- varList[!(varList %in% "% present taxa")]
         selectInput(
             "selectedDist", "Choose variable to plot:", varList, varList[1]
         )
@@ -4679,8 +5430,8 @@ shinyServer(function(input, output, session) {
                 splitDt <- createVariableDistributionDataSubset(
                     getFullData(),
                     splitDt,
-                    input$inSeq,
-                    input$inTaxa
+                    rv2$selectedSeq,
+                    rv2$selectedTaxa
                 )
             }
             # return dt
@@ -4698,7 +5449,8 @@ shinyServer(function(input, output, session) {
                 analyzeDistribution, "distPlot",
                 data = reactive(
                     createPercentageDistributionData(
-                        getMainInput(), input$rankSelect, getTaxDBpath()
+                        # getMainInput(),
+                        getFullData(), input$rankSelect, getTaxDBpath()
                     )
                 ),
                 varID = reactive(input$selectedDist),
@@ -4742,11 +5494,10 @@ shinyServer(function(input, output, session) {
             a given gene serves as the minimal gene age."
         )
 
-        if (input$tabs == "Gene age estimation") {
-            shinyBS::createAlert(
-                session, "descGeneAgeUI", "descGeneAge",
-                title = "", content = desc, append = FALSE
-            )
+        if (input$tabs == "gene_age_estimation") {
+            output$descGeneAgeUI <- renderUI({
+                div(class = "alert alert-info", desc)
+            })
         }
     })
 
@@ -4755,7 +5506,7 @@ shinyServer(function(input, output, session) {
         if (input$addClusterCustomProfile == TRUE
             | input$addCoreGeneCustomProfile == TRUE
             | input$addGCGenesCustomProfile == TRUE
-            | input$addGeneUmap == TRUE) {
+            | input$addGeneDimRed == TRUE) {
             shinyjs::disable("addGeneAgeCustomProfile")
         } else {
             shinyjs::enable("addGeneAgeCustomProfile")
@@ -4766,12 +5517,12 @@ shinyServer(function(input, output, session) {
         if (input$addClusterCustomProfile == TRUE
             | input$addCoreGeneCustomProfile == TRUE
             | input$addGCGenesCustomProfile == TRUE
-            | input$addGeneUmap == TRUE) {
+            | input$addGeneDimRed == TRUE) {
             HTML('<p><em>(Uncheck "Add to Customized profile" check box in
            <strong>Profile clustering</strong> or
            <strong>Core genes finding</strong> or
            <strong>Group comparison</strong> or
-           <strong>UMAP clustering (Selected genes)</strong>
+           <strong>Dimension reduction (Selected genes)</strong>
            &nbsp;to enable this function)</em></p>')
         }
     })
@@ -4799,13 +5550,20 @@ shinyServer(function(input, output, session) {
     })
 
     # ** render age distribution plot ------------------------------------------
+    observeEvent(input$geneAgeProtConfig, { showModal(geneAgeConfigModal()) })
     selectedgeneAge <- callModule(
         plotGeneAge, "geneAge",
         data = geneAgeDf,
-        geneAgeWidth = reactive(input$geneAgeWidth),
-        geneAgeHeight = reactive(input$geneAgeHeight),
-        geneAgeText = reactive(input$geneAgeText),
-        font = reactive(input$font)
+        geneAgeWidth = reactive(
+            { if (is.null(input$geneAgeWidth)) 1 else input$geneAgeWidth }
+        ),
+        geneAgeHeight = reactive(
+            { if (is.null(input$geneAgeHeight)) 1 else input$geneAgeHeight }
+        ),
+        geneAgeText = reactive(
+            { if (is.null(input$geneAgeText)) 1 else input$geneAgeText }
+        ),
+        font = reactive({ if (is.null(input$font)) "Arial" else input$font })
     )
 
     # * CORE GENES IDENTIFICATION ==============================================
@@ -4813,21 +5571,19 @@ shinyServer(function(input, output, session) {
     observe({
         desc = paste(
             "IDENTIFY GENES THAT ARE SHARED AMONG SELECTED TAXA.",
-            "You can set the minimal taxa that should be taken into
-            account by using the \"Core taxa coverage\" cutoff.",
-            "If you are working with a taxonomy level (e.g. Family)
-            that is higher than the one in the input profile (e.g.
-            Species), you can also identify a minimal fragtion of species
-            that need to have an ortholog in each supertaxon with
-            \"% of present taxa\" cutoff. WARNING: You should set the cutoffs
-            before selecting taxa of interest!"
+            "You can set the minnimum number of taxa to be considered by using
+            the \"Core taxa coverage\" cutoff.", "If you are working with a
+            higher taxonomy level (e.g. Family) than the one in the input
+            profile (e.g. Species), you can also specify a minimum fraction of
+            species that must have an ortholog in each supertaxon using the
+            \"% of present taxa\" cutoff. These cutoffs should be adjusted
+            according to your specifc needs!"
         )
 
-        if (input$tabs == "Core gene identification") {
-            shinyBS::createAlert(
-                session, "descCoreGeneUI", "descCoreGene",
-                title = "", content = desc, append = FALSE
-            )
+        if (input$tabs == "core_gene_ident") {
+            output$descCoreGeneUI <- renderUI({
+                div(class = "alert alert-info", desc)
+            })
         }
     })
 
@@ -4849,30 +5605,26 @@ shinyServer(function(input, output, session) {
             choice$fullName <- as.factor(choice$fullName)
 
             out <- as.list(levels(choice$fullName))
-            out <- append("none", out)
 
-            if (input$applyCoreTaxa == TRUE) {
+            if (!is.null(input$applyCoreTaxa) && input$applyCoreTaxa == TRUE) {
                 out <- coreTaxaName()
-                return(selectInput(
-                    "taxaCore",
-                    "Select taxa of interest:",
-                    out,
-                    selected = out,
-                    multiple = TRUE
-                ))
-            } else {
-                return(selectInput(
-                    "taxaCore",
-                    "Select taxa of interest:",
-                    out,
-                    selected = out[1],
-                    multiple = TRUE
-                ))
             }
+            return(selectInput(
+                "taxaCore",
+                "Select taxa of interest:",
+                out,
+                selected = out,
+                multiple = TRUE
+            ))
         }
     })
 
     # ** render popup for selecting group of taxa to find core genes -----------
+    observeEvent(input$browseTaxaCore, {
+        showModal(taxaSelectModal(
+            "selectTaxonRankCore", "Select taxon/taxa of interest",
+            "applyCoreTaxa", "Apply"))
+    })
     coreTaxaName <- callModule(
         selectTaxonRank,
         "selectTaxonRankCore",
@@ -4886,7 +5638,7 @@ shinyServer(function(input, output, session) {
         if (input$addClusterCustomProfile == TRUE
             | input$addGeneAgeCustomProfile == TRUE
             | input$addGCGenesCustomProfile == TRUE
-            | input$addGeneUmap == TRUE) {
+            | input$addGeneDimRed == TRUE) {
             shinyjs::disable("addCoreGeneCustomProfile")
         } else {
             shinyjs::enable("addCoreGeneCustomProfile")
@@ -4897,12 +5649,12 @@ shinyServer(function(input, output, session) {
         if (input$addClusterCustomProfile == TRUE
             | input$addGeneAgeCustomProfile == TRUE
             | input$addGCGenesCustomProfile == TRUE
-            | input$addGeneUmap == TRUE) {
+            | input$addGeneDimRed == TRUE) {
             HTML('<p><em>(Uncheck "Add to Customized profile" check box in
            <strong>Profiles clustering</strong> or
            <strong>Gene age estimating</strong> or
            <strong>Group Comparioson</strong> or
-           <strong>UMAP clustering (Selected genes)</strong>
+           <strong>Dimension reduction (Selected genes)</strong>
            &nbsp;to enable this function)</em></p>')
         }
     })
@@ -4935,6 +5687,11 @@ shinyServer(function(input, output, session) {
     )
 
     # * GROUP COMPARISON =======================================================
+    observe({
+        req(input$rankSelect)
+        if (input$rankSelect == "strain") shinyjs::disable("doCompare")
+        else shinyjs::enable("doCompare")
+    })
     # ** description for group comparison function -----------------------------
     observe({
         if (is.null(input$var1ID)) return()
@@ -4958,11 +5715,10 @@ shinyServer(function(input, output, session) {
             shown in the candidate gene list below."
         )
 
-        if (input$tabs == "Group comparison") {
-            shinyBS::createAlert(
-                session, "descGCUI", "descGC", title = "",
-                content = desc, append = FALSE
-            )
+        if (input$tabs == "group_comparison") {
+            output$descGCUI <- renderUI({
+                div(class = "alert alert-info", desc)
+            })
         }
     })
 
@@ -4988,7 +5744,7 @@ shinyServer(function(input, output, session) {
         if (input$addGeneAgeCustomProfile == TRUE
             | input$addCoreGeneCustomProfile == TRUE
             | input$addClusterCustomProfile == TRUE
-            | input$addGeneUmap == TRUE) {
+            | input$addGeneDimRed == TRUE) {
             shinyjs::disable("addGCGenesCustomProfile")
         } else {
             shinyjs::enable("addGCGenesCustomProfile")
@@ -4999,13 +5755,13 @@ shinyServer(function(input, output, session) {
         if (input$addGeneAgeCustomProfile == TRUE
             | input$addCoreGeneCustomProfile == TRUE
             | input$addClusterCustomProfile == TRUE
-            | input$addGeneUmap == TRUE) {
+            | input$addGeneDimRed == TRUE) {
             HTML(
                 '<p><em>(Uncheck "Add to Customized profile" check box in
                  <strong>Gene age estimation</strong> or
                 <strong>Profile clustering</strong> or
                 <strong>Core genes finding</strong> or
-                <strong>UMAP clustering (Selected genes)</strong>
+                <strong>Dimension reduction (Selected genes)</strong>
                 &nbsp;to enable this function)</em></p>'
             )
         }
@@ -5073,6 +5829,12 @@ shinyServer(function(input, output, session) {
 
     # ** render popup for selecting rank and return list of belonging taxa -----
     # ** (same as core gene identification)
+    observeEvent(input$taxaGC, {
+        showModal(taxaSelectModal(
+            "selectTaxonRankGC", "Select taxon/taxa of interest",
+            "applyTaxonGC", "Apply"
+        ))
+    })
     gcTaxaName <- callModule(
         selectTaxonRank,
         "selectTaxonRankGC",
@@ -5133,14 +5895,13 @@ shinyServer(function(input, output, session) {
                 choice <- inputTaxonName()
                 choice$fullName <- as.factor(choice$fullName)
                 out <- as.list(levels(choice$fullName))
-
                 #' when the taxonomy rank was changed --------------------------
-                if (input$applyTaxonGC == TRUE) {
-                    out <- gcTaxaName()
+                if (!is.null(input$applyTaxonGC) && input$applyTaxonGC == TRUE) {
+                    selectedTaxa <- gcTaxaName()
                     selectInput(
                         "selectedInGroupGC", "In-group taxa:",
                         out,
-                        selected = out,
+                        selected = selectedTaxa,
                         multiple = TRUE,
                         selectize = FALSE
                     )
@@ -5245,22 +6006,22 @@ shinyServer(function(input, output, session) {
 
     # ** parameters for the plots in Group Comparison --------------------------
     plotParametersGC <- reactive({
-        input$updateGC # for trigger changes
-        inputData <- list(
-            "xSize" = isolate(input$xSizeGC),
-            "ySize" = isolate(input$ySizeGC),
-            "angle" = isolate(input$angleGC),
-            "legendPosition" = isolate(input$legendGC),
-            "legendSize" = isolate(input$legendSizeGC),
-            "titleSize" = isolate(input$titleSizeGC),
-            "flipPlot" = isolate(input$xAxisGC),
-            "mValue" = isolate(input$mValueGC),
-            "widthVar" = isolate(input$widthVarGC),
-            "heightVar" = isolate(input$heightVarGC),
-            "widthFeature" = isolate(input$widthFeatureGC),
-            "heightFeature" = isolate(input$heightFeatureGC),
-            "inGroupName" = isolate(input$inGroupName),
-            "outGroupName" = isolate(input$outGroupName)
+        input$updateGC
+        list(
+            "xSize" = if (is.null(input$xSizeGC)) 12 else isolate(input$xSizeGC),
+            "ySize" = if (is.null(input$ySizeGC)) 12 else isolate(input$ySizeGC),
+            "angle" = if (is.null(input$angleGC)) 60 else isolate(input$angleGC),
+            "legendPosition" = if (is.null(input$legendGC)) "right" else isolate(input$legendGC),
+            "legendSize" = if (is.null(input$legendSizeGC)) 12 else isolate(input$legendSizeGC),
+            "titleSize" = if (is.null(input$titleSizeGC)) 15 else isolate(input$titleSizeGC),
+            "flipPlot" = if (is.null(input$xAxisGC)) "no" else isolate(input$xAxisGC),
+            "mValue" = if (is.null(input$mValueGC)) "mean" else isolate(input$mValueGC),
+            "widthVar" = if (is.null(input$widthVarGC)) 600 else isolate(input$widthVarGC),
+            "heightVar" = if (is.null(input$heightVarGC)) 400 else isolate(input$heightVarGC),
+            "widthFeature" = if (is.null(input$widthFeatureGC)) 600 else isolate(input$widthFeatureGC),
+            "heightFeature" = if (is.null(input$heightFeatureGC)) 400 else isolate(input$heightFeatureGC),
+            "inGroupName" = if (is.null(input$inGroupName)) "In-group" else isolate(input$inGroupName),
+            "outGroupName" = if (is.null(input$outGroupName)) "Out-group" else isolate(input$outGroupName)
         )
     })
 
@@ -5280,6 +6041,8 @@ shinyServer(function(input, output, session) {
     })
 
     # ** render plots for group comparison -------------------------------------
+    observeEvent(input$uploadGC, { showModal(gcUploadModal()) })
+    observeEvent(input$gcPlotConfig, { showModal(gcPlotConfigModal()) })
     candidateGenes <- callModule(
         groupComparison, "groupComparison",
         filteredDf = groupComparisonData,
@@ -5350,11 +6113,10 @@ shinyServer(function(input, output, session) {
             <code>preCalcTree.nw</code> (optional).</p>"
         )
 
-        if (input$tabs == "NCBI taxonomy data") {
-            shinyBS::createAlert(
-                session, "descNcbiTaxDbUI", "descNcbiTaxDb", title = "",
-                content = desc, append = FALSE
-            )
+        if (input$tabs == "ncbi_tax_data") {
+            output$descNcbiTaxDbUI <- renderUI({
+                div(class = "alert alert-info", HTML(desc))
+            })
         }
     })
 
@@ -5369,7 +6131,7 @@ shinyServer(function(input, output, session) {
                 id = "updateNCBITaxStatus", html = m$message, add = TRUE
             )
         })
-        shinyBS::updateButton(session, "doUpdateNcbi", disabled = TRUE)
+        shinyjs::disable("doUpdateNcbi")
     })
 
     # ** do reset taxonomy data ------------------------------------------------
@@ -5390,7 +6152,7 @@ shinyServer(function(input, output, session) {
                 id = "resetTaxonomyDataStatus", html = m$message, add = TRUE
             )
         })
-        shinyBS::updateButton(session, "doResetTax", disabled = TRUE)
+        shinyjs::disable("doResetTax")
     })
 
     # ** do export taxonomy data -----------------------------------------------
@@ -5424,7 +6186,7 @@ shinyServer(function(input, output, session) {
                 id = "exportTaxonomyDataStatus", html = m$message, add = TRUE
             )
         })
-        shinyBS::updateButton(session, "doExportTax", disabled = TRUE)
+        shinyjs::disable("doExportTax")
     })
 
     # ** do import taxonomy data -----------------------------------------------
@@ -5464,6 +6226,6 @@ shinyServer(function(input, output, session) {
                 id = "importTaxonomyDataStatus", html = m$message, add = TRUE
             )
         })
-        shinyBS::updateButton(session, "doImportTax", disabled = TRUE)
+        shinyjs::disable("doImportTax")
     })
 })

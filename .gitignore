@@ -7,6 +7,7 @@ inst/phyloprofile/data/taxonNamesFull.txt
 inst/PhyloProfile/data/preProcessedTaxonomy.txt
 inst/phyloprofile/data/newTaxa.txt
 tests/testthat/Rplots.pdf
+app/data/preProcessedTaxonomy.txt
 
 rsconnect/
 # History files

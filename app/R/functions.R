@@ -7,16 +7,21 @@
 #' input list) or "sortedGenes" (genes should be ordered by this list)
 #' @return data either sorted or non-sorted
 #' @author Vinh Tran {tran@bio.uni-frankfurt.de}
-sortGeneIDs <- function(data, orderType, geneOrder){
-    data$geneID <- as.factor(data$geneID)
+
+sortGeneIDs <- function(data, orderType, geneOrder) {
+    # Check if geneID is already a factor; if not, convert it
+    if (!is.factor(data$geneID)) {
+        data$geneID <- as.factor(data$geneID)
+    }
+
     if (orderType == "none") {
-        # keep user defined geneID order
-        data$geneID <- factor(data$geneID, levels = unique(data$geneID))
+        # Set factor levels to the current order in the data
+        levels(data$geneID) <- unique(data$geneID)
     } else if (orderType == "user defined") {
-        # keep user defined geneID order
-        if (length(geneOrder[1]) == 0) return(data)
-        if (names(geneOrder[1]) == "sortedGenes") {
-            data$geneID <- factor(data$geneID, levels = geneOrder$sortedGenes)
+        # Apply user-defined order only if `geneOrder` is valid
+        if (!is.null(geneOrder) && "sortedGenes" %in% names(geneOrder)) {
+            sortedGenes <- geneOrder$sortedGenes
+            data$geneID <- factor(data$geneID, levels = sortedGenes)
         }
     }
     return(data)
@@ -201,6 +206,28 @@ adaptPlotSize <- function(nrTaxa = 0, nrGene = 0, xAxis = "taxa", dotZoom = 0) {
         wv <- wv + 300
         return(c(h, hv, wv))
     } else return(c())
+}
+
+#' Scale a list of values into 0-1
+#' @param x a numeric vector
+#' @return a vector with values scaled from 0 to 1
+
+scale01 <- function(x){(x-min(x))/(max(x)-min(x))}
+
+#' Helper function to read single-column files
+#' @param fileInput fileInput object
+#' @return vector of unique values in input file
+
+readSingleColFile <- function(fileInput) {
+    if (!is.null(fileInput)) {
+        labels <- readLines(fileInput$datapath)
+        return(unique(labels))
+    }
+    return(NULL)
+}
+
+idWithSuffix <- function(base, suffix) {
+    if (suffix == "") base else paste0(base, suffix)
 }
 
 # FUNCTIONS FOR RENDER UI ELEMENTS ============================================
